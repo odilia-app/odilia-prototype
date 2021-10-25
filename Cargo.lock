@@ -666,7 +666,7 @@ dependencies = [
 [[package]]
 name = "tts_subsystem"
 version = "0.1.0"
-source = "git+https://github.com/yggdrasil-sr/tts_subsystem.git#fb338e2f32d90c9c863dad2e2aa9a7166dbd1c01"
+source = "git+https://github.com/yggdrasil-sr/tts_subsystem.git#169d5d9c7d558d981c41e02fc54c956a9c11e62d"
 dependencies = [
  "speech-dispatcher-sys",
  "thiserror",
@@ -759,5 +759,6 @@ name = "yggdrasil-prototype"
 version = "0.1.0"
 dependencies = [
  "atspi",
+ "once_cell",
  "tts_subsystem",
 ]
