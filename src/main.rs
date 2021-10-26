@@ -7,7 +7,7 @@ use tts_subsystem::Speaker;
 use once_cell::sync::OnceCell;
 fn speak(text:&str) {
     
-    let temp=tts
+    let temp=TTS
         .get()
         .unwrap()
         .lock()
@@ -15,13 +15,13 @@ fn speak(text:&str) {
     temp.cancel().unwrap();
     temp.speak(Priority::Important, text).unwrap();
 }
-static tts: OnceCell<Mutex<Speaker>>=OnceCell::new();
+static TTS: OnceCell<Mutex<Speaker>>=OnceCell::new();
 fn main() {
     if let Err(e) = atspi::init() {
         eprintln!("Error initialising libatspi: {}", e);
         std::process::exit(1);
     }
-    tts.set(Mutex::new(Speaker::new("yggdrasil").unwrap()));
+    TTS.set(Mutex::new(Speaker::new("yggdrasil").unwrap()));
     let listener = EventListener::new(|e| {
         let source=e.source().unwrap();
         speak(&handle_component(source));
