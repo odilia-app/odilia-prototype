@@ -29,7 +29,7 @@ checksum = "61604a8f862e1d5c3229fdd78f8b02c68dcf73a4c4b05fd636d12240aaa242c1"
 [[package]]
 name = "atspi"
 version = "0.1.0"
-source = "git+https://github.com/yggdrasil-sr/atspi-rs.git#e477fbad6ad26e8edd40d1b7c0ebc92a97948021"
+source = "git+https://github.com/yggdrasil-sr/atspi-rs.git#20988287901317019aba4a7da80a717760d1eafb"
 dependencies = [
  "atspi-sys",
  "bitflags",
@@ -42,7 +42,7 @@ dependencies = [
 [[package]]
 name = "atspi-sys"
 version = "0.1.0"
-source = "git+https://github.com/yggdrasil-sr/atspi-rs.git#e477fbad6ad26e8edd40d1b7c0ebc92a97948021"
+source = "git+https://github.com/yggdrasil-sr/atspi-rs.git#20988287901317019aba4a7da80a717760d1eafb"
 dependencies = [
  "glib-sys",
  "gobject-sys",
@@ -248,7 +248,7 @@ checksum = "8f5f3913fa0bfe7ee1fd8248b6b9f42a5af4b9d65ec2dd2c3c26132b950ecfc2"
 [[package]]
 name = "glib"
 version = "0.15.0"
-source = "git+https://github.com/gtk-rs/gtk-rs-core#97b45da1af7ace353c7596d0d9e2d36aee687465"
+source = "git+https://github.com/gtk-rs/gtk-rs-core#64cd888c4b02525b2c22a5979f8c5f592c1f4047"
 dependencies = [
  "bitflags",
  "futures-channel",
@@ -266,7 +266,7 @@ dependencies = [
 [[package]]
 name = "glib-macros"
 version = "0.15.0"
-source = "git+https://github.com/gtk-rs/gtk-rs-core#97b45da1af7ace353c7596d0d9e2d36aee687465"
+source = "git+https://github.com/gtk-rs/gtk-rs-core#64cd888c4b02525b2c22a5979f8c5f592c1f4047"
 dependencies = [
  "anyhow",
  "heck",
@@ -280,7 +280,7 @@ dependencies = [
 [[package]]
 name = "glib-sys"
 version = "0.15.0"
-source = "git+https://github.com/gtk-rs/gtk-rs-core#97b45da1af7ace353c7596d0d9e2d36aee687465"
+source = "git+https://github.com/gtk-rs/gtk-rs-core#64cd888c4b02525b2c22a5979f8c5f592c1f4047"
 dependencies = [
  "libc",
  "system-deps 5.0.0",
@@ -295,7 +295,7 @@ checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
 [[package]]
 name = "gobject-sys"
 version = "0.15.0"
-source = "git+https://github.com/gtk-rs/gtk-rs-core#97b45da1af7ace353c7596d0d9e2d36aee687465"
+source = "git+https://github.com/gtk-rs/gtk-rs-core#64cd888c4b02525b2c22a5979f8c5f592c1f4047"
 dependencies = [
  "glib-sys",
  "libc",
