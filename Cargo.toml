@@ -1,13 +1,16 @@
 [package]
 name = "yggdrasil-prototype"
-version = "0.4.20"
+version = "0.5.0"
+authors = ["Michael Connor Buchan <mikey@blindcomputing.org>"]
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-atspi={git="https://github.com/yggdrasil-sr/atspi-rs.git"}
+atspi-codegen = { git = "https://github.com/yggdrasil-sr/atspi-codegen", features = ["nonblock"] }
+dbus = { version = "0.9.5", features = ["futures"] }
+dbus-tokio = "0.7.5"
+futures = "0.3.17"
 once_cell = "1.8.0"
-tts_subsystem={git="https://github.com/yggdrasil-sr/tts_subsystem.git"}
+tokio = { version = "1.13.0", features = ["full"] }
+tts_subsystem = { git = "https://github.com/yggdrasil-sr/tts_subsystem" }
 
 [features]
