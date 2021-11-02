@@ -6,30 +6,33 @@ use dbus::{
     nonblock::{Proxy, MethodReply, SyncConnection, stdintf::org_freedesktop_dbus::Properties},
 };
 use futures::stream::StreamExt;
-use once_cell::sync::Lazy;
+use once_cell::sync::OnceCell;
+//use once_cell::sync::Lazy;
 
 use atspi_codegen::event::OrgA11yAtspiEventObjectStateChanged as StateChanged;
 use tts_subsystem::{Priority, Speaker};
 
-const TIMEOUT: Duration = Duration::from_secs(5);
+const TIMEOUT: Duration = Duration::from_secs(1);
 
 // Create a lazily initialised static Speaker
 // The closure is called when `TTS` is first used, and its return value is used to initialise a
 // hidden OnceCell in this static
-static TTS: Lazy<Mutex<Speaker>> = Lazy::new(|| Mutex::new(Speaker::new("yggdrasil").unwrap()));
+static TTS:OnceCell<Mutex<Speaker>>=OnceCell::new();
+//static TTS: Lazy<Mutex<Speaker>> = Lazy::new(|| Mutex::new(Speaker::new("yggdrasil").unwrap()));
 
 fn speak(text: &str) {
     // We can use it directly here, it will automatically be initialised if necessary
-    let temp = TTS.lock().unwrap();
+    let temp = TTS.get().unwrap().lock().unwrap();
     temp.cancel().unwrap();
     temp.speak(Priority::Important, text).unwrap();
 }
 
 #[tokio::main]
 async fn main() -> Result<(), dbus::Error> {
+    //I am trying to fix this by making TTS not be lazily initialised
+    TTS.set(Mutex::new(Speaker::new("yggdrasil").unwrap())).unwrap();
     // Connect to the accessibility bus
     let (_event_loop, conn) = open_a11y_bus().await?;
-
     // Create a proxy object that interacts with the at-spi registry
     let registry = Proxy::new(
         "org.a11y.atspi.Registry",
