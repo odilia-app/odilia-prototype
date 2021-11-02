@@ -1,21 +1,16 @@
-use std::sync::Mutex;
-use atspi::Role;
 use atspi::accessible::AccessibleExt;
 use atspi::events::*;
+use atspi::Role;
+use once_cell::sync::OnceCell;
+use std::sync::Mutex;
 use tts_subsystem::Priority;
 use tts_subsystem::Speaker;
-use once_cell::sync::OnceCell;
-fn speak(text:&str) {
-    
-    let temp=TTS
-        .get()
-        .unwrap()
-        .lock()
-        .unwrap();
+fn speak(text: &str) {
+    let temp = TTS.get().unwrap().lock().unwrap();
     temp.cancel().unwrap();
     temp.speak(Priority::Important, text).unwrap();
 }
-static TTS: OnceCell<Mutex<Speaker>>=OnceCell::new();
+static TTS: OnceCell<Mutex<Speaker>> = OnceCell::new();
 fn main() {
     if let Err(e) = atspi::init() {
         eprintln!("Error initialising libatspi: {}", e);
@@ -23,37 +18,33 @@ fn main() {
     }
     TTS.set(Mutex::new(Speaker::new("yggdrasil").unwrap()));
     let listener = EventListener::new(|e| {
-        let source=e.source().unwrap();
+        let source = e.source().unwrap();
         speak(&handle_component(source));
-        //speak(&format!("{}: {} gained focus", e.source().unwrap().name().unwrap(), e.source().unwrap().role().unwrap()));
-        });
+    });
     listener.register("object:state-changed:focused").unwrap();
     Event::main();
     atspi::exit();
 }
 
 fn handle_component(source: atspi::prelude::Accessible) -> String {
-    let name=source.name();
-    let text=source.text();
-    
-    let role=source.role().unwrap();
-    let spoken_control={
-        if name.is_err() &&text.is_none(){
+    let name = source.name();
+    let text = source.text();
+
+    let role = source.role().unwrap();
+    let spoken_control = {
+        if name.is_err() && text.is_none() {
             "unlabeled".to_owned()
+        } else if name.is_err() {
+            text.unwrap().to_string()
+        } else if text.is_none() {
+            name.unwrap().to_string()
+        } else {
+            format!("{}, {}", name.unwrap(), text.unwrap())
         }
-    else if name.is_err() {
-        text    .unwrap().to_string()
-    }    
-    else if text.is_none() {
-    name.unwrap().to_string()
-}    
-else {
-    format!("{}, {}", name.unwrap(), text.unwrap()) 
-}
     };
 
-let spoken_role=handle_component_kind(role);
-format!("{}: {}", spoken_control, spoken_role)
+    let spoken_role = handle_component_kind(role);
+    format!("{}: {}", spoken_control, spoken_role)
 }
 
 fn handle_component_kind(role: Role) -> &'static str {
@@ -189,6 +180,6 @@ fn handle_component_kind(role: Role) -> &'static str {
         Role::Suggestion => "suggestion",
         Role::LastDefined => "last defined",
         Role::__Unknown(_) => "",
-    _=>{""}
+        _ => "",
     }
-    }
+}
