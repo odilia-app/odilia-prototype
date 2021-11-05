@@ -1,4 +1,4 @@
-use std::{sync::{Arc, Mutex}, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use dbus::{
     channel::Channel,
@@ -8,6 +8,7 @@ use dbus::{
 use futures::stream::StreamExt;
 use once_cell::sync::OnceCell;
 //use once_cell::sync::Lazy;
+use tokio::sync::Mutex;
 
 use atspi_codegen::event::OrgA11yAtspiEventObjectStateChanged as StateChanged;
 use tts_subsystem::{Priority, Speaker};
@@ -20,11 +21,11 @@ const TIMEOUT: Duration = Duration::from_secs(1);
 static TTS:OnceCell<Mutex<Speaker>>=OnceCell::new();
 //static TTS: Lazy<Mutex<Speaker>> = Lazy::new(|| Mutex::new(Speaker::new("yggdrasil").unwrap()));
 
-fn speak(text: &str) {
+async fn speak(text: impl AsRef<str>) {
     // We can use it directly here, it will automatically be initialised if necessary
-    let temp = TTS.get().unwrap().lock().unwrap();
+    let temp = TTS.get().unwrap().lock().await;
     temp.cancel().unwrap();
-    temp.speak(Priority::Important, text).unwrap();
+    temp.speak(Priority::Important, text.as_ref()).unwrap();
 }
 
 #[tokio::main]
@@ -73,7 +74,7 @@ async fn main() -> Result<(), dbus::Error> {
             let role_fut: MethodReply<(String,)> = accessible.method_call("org.a11y.atspi.Accessible", "GetLocalizedRoleName", ());
             let (name, (role,)) = tokio::try_join!(name_fut, role_fut)?;
             let text = format!("{}, {}", name, role);
-            speak(&text);
+            tokio::task::spawn(speak(text));
         }
     Ok(())
 }
