@@ -11,6 +11,7 @@ use once_cell::sync::OnceCell;
 use tokio::sync::Mutex;
 
 use atspi_codegen::event::OrgA11yAtspiEventObjectStateChanged as StateChanged;
+use atspi_codegen::event::OrgA11yAtspiEventObjectTextCaretMoved as CaretMoved;
 use tts_subsystem::{Priority, Speaker};
 
 const TIMEOUT: Duration = Duration::from_secs(1);
@@ -47,15 +48,18 @@ async fn main() -> Result<(), dbus::Error> {
         .method_call(
             "org.a11y.atspi.Registry",
             "RegisterEvent",
-            ("Object:StateChanged:Focused\0",),
+            (//"Object:StateChanged:Focused\0",
+             "Object:TextCaretMoved\0",),
         )
         .await?;
 
     // Listen for those events
     let mr = MatchRule::new_signal(StateChanged::INTERFACE, StateChanged::NAME);
+    let mr2 = MatchRule::new_signal(CaretMoved::INTERFACE, CaretMoved::NAME);
     // msgmatch must be bound, else we get no events!
     let (_msgmatch, mut stream) = conn.add_match(mr).await?.msg_stream();
     while let Some(msg) = stream.next().await {
+        println!("{:?}", msg);
         let mut iter = msg.iter_init();
         let event_type: String = iter.get().unwrap();
         if event_type != "focused" {
@@ -77,6 +81,8 @@ async fn main() -> Result<(), dbus::Error> {
             Arc::clone(&conn),
         );
         let name_fut: MethodReply<String> = accessible.get("org.a11y.atspi.Accessible", "Name");
+        let attrs_fut: MethodReply<String> = accessible.get("org.a11y.atspi.Accessible", "GetAttribute");
+        println!("{}", attrs_fut);
         let role_fut: MethodReply<(String,)> =
             accessible.method_call("org.a11y.atspi.Accessible", "GetLocalizedRoleName", ());
         let (name, (role,)) = tokio::try_join!(name_fut, role_fut)?;
