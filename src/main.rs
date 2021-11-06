@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration, collections::HashMap};
 
 use dbus::{
     channel::Channel,
@@ -49,7 +49,7 @@ async fn main() -> Result<(), dbus::Error> {
             "org.a11y.atspi.Registry",
             "RegisterEvent",
             (//"Object:StateChanged:Focused\0",
-             "Object:TextCaretMoved\0",),
+             "Object::TestCaretMoved\0",)
         )
         .await?;
 
@@ -57,11 +57,12 @@ async fn main() -> Result<(), dbus::Error> {
     let mr = MatchRule::new_signal(StateChanged::INTERFACE, StateChanged::NAME);
     let mr2 = MatchRule::new_signal(CaretMoved::INTERFACE, CaretMoved::NAME);
     // msgmatch must be bound, else we get no events!
-    let (_msgmatch, mut stream) = conn.add_match(mr).await?.msg_stream();
+    let (_msgmatch, mut stream) = conn.add_match(mr2).await?.msg_stream();
     while let Some(msg) = stream.next().await {
-        println!("{:?}", msg);
         let mut iter = msg.iter_init();
         let event_type: String = iter.get().unwrap();
+        println!("{:?}", msg);
+        /*
         if event_type != "focused" {
             continue;
         }
@@ -69,7 +70,7 @@ async fn main() -> Result<(), dbus::Error> {
         let gained_focus = iter.get::<i32>().unwrap() == 1;
         if !gained_focus {
             continue;
-        }
+        }*/
 
         // Construct a proxy to the newly focused DBus object
         // I think the only time these unwraps would panic is if we were constructing a
@@ -81,13 +82,14 @@ async fn main() -> Result<(), dbus::Error> {
             Arc::clone(&conn),
         );
         let name_fut: MethodReply<String> = accessible.get("org.a11y.atspi.Accessible", "Name");
-        let attrs_fut: MethodReply<String> = accessible.get("org.a11y.atspi.Accessible", "GetAttribute");
-        println!("{}", attrs_fut);
         let role_fut: MethodReply<(String,)> =
             accessible.method_call("org.a11y.atspi.Accessible", "GetLocalizedRoleName", ());
-        let (name, (role,)) = tokio::try_join!(name_fut, role_fut)?;
-        let text = format!("{}, {}", name, role);
-        tokio::task::spawn(speak(text));
+        let text_fut: MethodReply<(HashMap<String,String>,)> =
+            accessible.method_call("org.a11y.atspi.Accessible", "GetAttributes", ());
+        let (name, (role,), (text,)) = tokio::try_join!(name_fut, role_fut, text_fut)?;
+        println!("TEXT: {:?}\nROLE: {:?}", text.get("tag"), role);
+        //let text = format!("{}, {}", name, role);
+        //tokio::task::spawn(speak(text));
     }
     Ok(())
 }
