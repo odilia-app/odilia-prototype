@@ -1,5 +1,7 @@
 use std::{sync::Arc, time::Duration, collections::HashMap};
 
+use atspi::Accessible;
+
 use dbus::{
     channel::Channel,
     message::{MatchRule, SignalArgs},
@@ -61,6 +63,14 @@ async fn main() -> Result<(), dbus::Error> {
     while let Some(msg) = stream.next().await {
         let mut iter = msg.iter_init();
         let event_type: String = iter.get().unwrap();
+        //let sender = msg.sender().unwrap().clone();
+        //let path = msg.path().unwrap().clone();
+        /*
+        let acc = Accessible::new(
+          sender,
+          path,
+          Arc::clone(&conn)
+        );*/
         println!("{:?}", msg);
         /*
         if event_type != "focused" {
@@ -75,21 +85,47 @@ async fn main() -> Result<(), dbus::Error> {
         // Construct a proxy to the newly focused DBus object
         // I think the only time these unwraps would panic is if we were constructing a
         // message, and it wasn't fully constructed yet, so this *should* be fine
-        let accessible = Proxy::new(
+        let accessible = Accessible::with_timeout(
             msg.sender().unwrap(),
             msg.path().unwrap(),
+            Arc::clone(&conn),
+            TIMEOUT,
+        );
+        println!("{:?}", accessible.name().await);
+        println!("{:?}", accessible.localized_role_name().await);
+        accessible.children().await.unwrap().for_each(|a| async {
+            println!("{:?}", a.name().await);
+        });
+        /*
+        let name_fut: MethodReply<String> = accessible.get("org.a11y.atspi.Accessible", "Name");
+        let chr_cnt_fut: MethodReply<i32> = accessible.get("org.a11y.atspi.Text", "CharacterCount");
+        let role_fut: MethodReply<(String,)> =
+            accessible.method_call("org.a11y.atspi.Accessible", "GetLocalizedRoleName", ());
+        let attrs_fut: MethodReply<(HashMap<String,String>,)> =
+            accessible.method_call("org.a11y.atspi.Accessible", "GetAttributes", ());
+        let children_fut: MethodReply<((String, dbus::Path<'static>),)> =
+            accessible.method_call("org.a11y.atspi.Accessible", "GetChildAtIndex", (0,));
+        let chr_cnt = tokio::try_join!(chr_cnt_fut);
+        let children = tokio::try_join!(children_fut).unwrap().0.0;
+        let text_fut: MethodReply<(String,)> =
+            accessible.method_call("org.a11y.atspi.Text", "GetText", (0, chr_cnt.unwrap().0));
+        let index_in_fut: MethodReply<(i32,)> = accessible.method_call("org.a11y.atspi.Accessible", "GetIndexInParent", ());
+        let (name, (role,), (attrs,), (text,), (index_in,)) = tokio::try_join!(name_fut, role_fut, attrs_fut, text_fut, index_in_fut)?;
+        println!("<{0}>{1}</{0}>", attrs.get("tag").unwrap(), text);
+        let accessible2 = Proxy::new(
+            msg.sender().unwrap(),
+            & children.1,
             TIMEOUT,
             Arc::clone(&conn),
         );
-        let name_fut: MethodReply<String> = accessible.get("org.a11y.atspi.Accessible", "Name");
-        let role_fut: MethodReply<(String,)> =
-            accessible.method_call("org.a11y.atspi.Accessible", "GetLocalizedRoleName", ());
-        let text_fut: MethodReply<(HashMap<String,String>,)> =
-            accessible.method_call("org.a11y.atspi.Accessible", "GetAttributes", ());
-        let (name, (role,), (text,)) = tokio::try_join!(name_fut, role_fut, text_fut)?;
-        println!("TEXT: {:?}\nROLE: {:?}", text.get("tag"), role);
+        println!("INDEX: {:?}", index_in);
+        println!("{:?}", children);
+        let place_fut: MethodReply<(i32,)> = accessible2.method_call("org.a11y.atspi.Accessible", "GetIndexInParent", ());
+        let place = tokio::try_join!(place_fut);
+        println!("{:?}", place);
         //let text = format!("{}, {}", name, role);
         //tokio::task::spawn(speak(text));
+        */
     }
     Ok(())
 }

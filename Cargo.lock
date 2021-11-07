@@ -21,6 +21,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "atspi"
+version = "0.1.0"
+dependencies = [
+ "atspi-codegen 0.1.0",
+ "dbus",
+ "futures-core",
+]
+
+[[package]]
+name = "atspi-codegen"
+version = "0.1.0"
+dependencies = [
+ "dbus",
+ "dbus-codegen",
+]
+
+[[package]]
 name = "atspi-codegen"
 version = "0.1.0"
 source = "git+https://github.com/yggdrasil-sr/atspi-codegen#2854f8f267d543f6a7b7f720e822f856986f9064"
@@ -779,7 +796,8 @@ checksum = "d2d7d3948613f75c98fd9328cfdcc45acc4d360655289d0a7d4ec931392200a3"
 name = "yggdrasil-prototype"
 version = "0.5.0"
 dependencies = [
- "atspi-codegen",
+ "atspi",
+ "atspi-codegen 0.1.0 (git+https://github.com/yggdrasil-sr/atspi-codegen)",
  "dbus",
  "dbus-tokio",
  "futures",
