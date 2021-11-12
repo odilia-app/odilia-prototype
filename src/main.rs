@@ -14,6 +14,7 @@ use tokio::sync::Mutex;
 
 use atspi_codegen::event::OrgA11yAtspiEventObjectStateChanged as StateChanged;
 use atspi_codegen::event::OrgA11yAtspiEventObjectTextCaretMoved as CaretMoved;
+use atspi_codegen::device_event_controller::OrgA11yAtspiDeviceEventController;
 use tts_subsystem::{Priority, Speaker};
 
 const TIMEOUT: Duration = Duration::from_secs(1);
@@ -39,6 +40,12 @@ async fn main() -> Result<(), dbus::Error> {
     // Connect to the accessibility bus
     let (_event_loop, conn) = open_a11y_bus().await?;
     // Create a proxy object that interacts with the at-spi registry
+    let addr1 = Proxy::new(
+        "org.a11y.Bus",
+        "/org/a11y/Bus",
+        TIMEOUT,
+        Arc::clone(&conn),
+    );
     let registry = Proxy::new(
         "org.a11y.atspi.Registry",
         "/org/a11y/atspi/registry",
@@ -50,11 +57,20 @@ async fn main() -> Result<(), dbus::Error> {
         .method_call(
             "org.a11y.atspi.Registry",
             "RegisterEvent",
-            (//"Object:StateChanged:Focused\0",
-             "Object::TestCaretMoved\0",)
+            ("Object:TextCaretChanged\0",)
         )
         .await?;
 
+    /*
+    let (addr,) = addr1.method_call("org.a11y.Bus", "GetAddress", ()).await?;
+    let success = registry.register_keystroke_listener(
+        addr,
+        vec![(43, 0x68, "h", 0)],
+        0,
+        vec![0],
+        (false, false, true)).await;
+    println!("{:?}", success);
+*/
     // Listen for those events
     let mr = MatchRule::new_signal(StateChanged::INTERFACE, StateChanged::NAME);
     let mr2 = MatchRule::new_signal(CaretMoved::INTERFACE, CaretMoved::NAME);
@@ -91,10 +107,9 @@ async fn main() -> Result<(), dbus::Error> {
             Arc::clone(&conn),
             TIMEOUT,
         );
-        println!("{:?}", accessible.name().await);
         println!("{:?}", accessible.localized_role_name().await);
-        accessible.children().await.unwrap().for_each(|a| async {
-            println!("{:?}", a.name().await);
+        accessible.children(false).await.unwrap().for_each(|a| async {
+            println!("{:?}", a.unwrap().localized_role_name().await);
         });
         /*
         let name_fut: MethodReply<String> = accessible.get("org.a11y.atspi.Accessible", "Name");
