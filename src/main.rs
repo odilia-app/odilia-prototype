@@ -68,8 +68,8 @@ async fn main() -> Result<(), dbus::Error> {
         "RegisterKeystrokeListener",
         (dbus::Path::from("/org/a11y/atspi/listeners/0"),
          vec![(43, 0x68, "h", 0)],
-         0,
-         3,
+         0 as u32,
+         3 as u32,
          (false, false, true))).await?;
     println!("{:?}", success);
     // Listen for those events
