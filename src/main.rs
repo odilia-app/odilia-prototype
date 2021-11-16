@@ -62,23 +62,31 @@ async fn main() -> Result<(), dbus::Error> {
         )
         .await?;
 
-    let success = addr1.method_call(
+    let v: Vec<(i32, i32, &str, i32)> = Vec::new();
+
+    let dev_succ = addr1.register_device_event_listener(dbus::Path::from("/org/a11y/listeners/0"), 1 as u32).await?;
+    println!("DEV: {:?}", dev_succ);
+
+    let success: MethodReply<(bool, )> = addr1.method_call(
         "org.a11y.atspi.DeviceEventController",
         "RegisterKeystrokeListener",
-        (dbus::Path::from("/org/a11y/atspi/listeners/0"),
-         vec![(43, 0x68, "h", 0)],
-         0 as u32,
+        (
+        dbus::Path::from("/org/a11y/atspi/listeners/0"),
+         v,
+         43 as u32,
          3 as u32,
-         (false, true, true))).await?;
-    println!("{:?}", success);
+         (true, true, false)));
+    println!("{:?}", tokio::try_join!(success));
     // Listen for those events
     let mr = MatchRule::new_signal(StateChanged::INTERFACE, StateChanged::NAME);
     let mr2 = MatchRule::new_signal(CaretMoved::INTERFACE, CaretMoved::NAME);
-    let mr3 = MatchRule::new();
+    let mr3 = MatchRule::new_signal("org.a11y.atspi.DeviceEventController", "NotifyListenersSync");
+    //let mr3 = mr3.with_path("/org/a11y/atspi/listeners/0");
     // msgmatch must be bound, else we get no events!
     let (_msgmatch, mut stream) = conn.add_match(mr3).await?.msg_stream();
     while let Some(msg) = stream.next().await {
         let mut iter = msg.iter_init();
+        println!("{:?}", iter);
         let event_type: String = iter.get().unwrap();
         //let sender = msg.sender().unwrap().clone();
         //let path = msg.path().unwrap().clone();
