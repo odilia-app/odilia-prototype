@@ -5,14 +5,20 @@ ODILIA_GROUP='odilia'
 RULES_TEXT="KERNEL==\"uinput\", MODE=\"0660\", GROUP=\"$ODILIA_GROUP\", OPTIONS+=\"static_node=uinput\""
 ## END of config
 
+# get user (even if they're in sudo)
+user=$(logname)
+
 # get all users
 groups=$(cat /etc/group | cut -d: -f1)
-# if odilia user doesn't exist, make it 
-if [[ "$groups" == *"$ODILIA_GROUP"* ]]; then
+# if odilia user doesn't exist, make it, add currect user to it, and add current user to input group.
+# 	techincally, we should only need to do one of these, but some distros do not have automatic `input` group permissions.
+if [[ "$groups" =~ /*$ODILIA_GROUP*/ ]]; then
 	useradd "$ODILIA_GROUP"
-	usermod -a -G "$ODILIA_GROUP" $USER
-	usermod -a -G "input" $USER
+	usermod -a -G "$ODILIA_GROUP" $user
+	usermod -a -G "input" $user
 	echo "Warning: Although your permissions are set up correctly, you need to log out to apply these changes."
+else
+	echo "permissions already setup"
 fi
 
 # get text of file we should have written to
@@ -29,5 +35,7 @@ if [[ "$rules_text" != "$RULES_TEXT" ]]; then
 	echo "$RULES_TEXT" | tee "$RULES_PATH"
 	udevadm control --reload-rules
 	echo "udev rules updated...you may need to reset to see these changes applied."
+else
+	echo "udev rules correct"
 fi
 
