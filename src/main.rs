@@ -34,9 +34,13 @@ async fn speak(text: impl AsRef<str>) {
     temp.speak(Priority::Important, text.as_ref()).unwrap();
 }
 
+// TODO: not sure how to make async, maybe add stuff to rdev
 fn keystroke_handler(event: Event) -> Option<Event> {
   let ret_evt = match event.event_type {
-    EventType::KeyPress(Key::Tab) => None,
+    EventType::KeyPress(Key::KeyH) => {
+      println!("Focus next header");
+      Some(event)
+    }   
     _ => Some(event)
   };
   ret_evt
@@ -131,7 +135,11 @@ async fn main() -> Result<(), dbus::Error> {
             accessible.method_call("org.a11y.atspi.Text", "GetText", (0, chr_cnt.unwrap().0));
         let index_in_fut: MethodReply<(i32,)> = accessible.method_call("org.a11y.atspi.Accessible", "GetIndexInParent", ());
         let (name, (role,), (attrs,), (text,), (index_in,)) = tokio::try_join!(name_fut, role_fut, attrs_fut, text_fut, index_in_fut)?;
-        println!("<{0}>{1}</{0}>", attrs.get("tag").unwrap(), text);
+        */
+        let attrs = acc.attrs().await;
+        println!("{:?}", attrs);
+        //println!("<{0}>{1}</{0}>", attrs.get("tag").unwrap(), text);
+        /*
         let accessible2 = Proxy::new(
             msg.sender().unwrap(),
             & children.1,
