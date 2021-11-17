@@ -1,4 +1,5 @@
 use std::{sync::Arc, time::Duration, collections::HashMap};
+use rdev::{grab, listen, Event, EventType, Key};
 
 use atspi::Accessible;
 
@@ -10,7 +11,8 @@ use dbus::{
 use futures::stream::StreamExt;
 use once_cell::sync::OnceCell;
 //use once_cell::sync::Lazy;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, mpsc};
+use std::thread;
 
 use atspi_codegen::event::OrgA11yAtspiEventObjectStateChanged as StateChanged;
 use atspi_codegen::event::OrgA11yAtspiEventObjectTextCaretMoved as CaretMoved;
@@ -32,15 +34,23 @@ async fn speak(text: impl AsRef<str>) {
     temp.speak(Priority::Important, text.as_ref()).unwrap();
 }
 
+fn keystroke_handler(event: Event) -> Option<Event> {
+  let ret_evt = match event.event_type {
+    EventType::KeyPress(Key::Tab) => None,
+    _ => Some(event)
+  };
+  ret_evt
+}
+
 #[tokio::main]
 async fn main() -> Result<(), dbus::Error> {
-    println!("STARTING YGGDRASIL!");
+    println!("STARTING ODILIA!");
     //I am trying to fix this by making TTS not be lazily initialised
     TTS.set(Mutex::new(Speaker::new("yggdrasil").unwrap()))
         .unwrap();
     // Connect to the accessibility bus
     let (_event_loop, conn) = open_a11y_bus().await?;
-    // Create a proxy object that interacts with the at-spi registry
+    println!("{}", conn.unique_name());
     let addr1 = Proxy::new(
         "org.a11y.atspi.Registry",
         "/org/a11y/atspi/registry/deviceeventcontroller",
@@ -53,41 +63,44 @@ async fn main() -> Result<(), dbus::Error> {
         TIMEOUT,
         Arc::clone(&conn),
     );
-    // Tell at-spi we're interested in focus events
+    
+ // Tell at-spi we're interested in focus events
     registry
         .method_call(
             "org.a11y.atspi.Registry",
             "RegisterEvent",
-            ("Object:TextCaretChanged\0",)
+            ("Object:TextCaretMoved\0",)
         )
         .await?;
 
-    let nv: Vec<(i32, i32, &str, i32)> = vec![];
-    let success = addr1.method_call(
+    let matching = Proxy::new(
         "org.a11y.atspi.DeviceEventController",
-        "RegisterKeystrokeListener",
-        (dbus::Path::from("/org/a11y/atspi/listeners/0"),
-         vec![(43, 0x68, "h", 0)],
-         0,
-         3,
-         (false, false, true))).await?;
-    println!("{:?}", success);
+        "/org/a11y/atspi/listeners/0",
+        TIMEOUT,
+        Arc::clone(&conn),
+    );
+    // get key event listeners set up
+    let _listener = thread::spawn(move || {
+      if let Err(error) = grab(keystroke_handler) {
+        println!("Error: {:?}", error);
+      }
+    });
+
     // Listen for those events
     let mr = MatchRule::new_signal(StateChanged::INTERFACE, StateChanged::NAME);
     let mr2 = MatchRule::new_signal(CaretMoved::INTERFACE, CaretMoved::NAME);
     // msgmatch must be bound, else we get no events!
     let (_msgmatch, mut stream) = conn.add_match(mr2).await?.msg_stream();
+    
+
     while let Some(msg) = stream.next().await {
         let mut iter = msg.iter_init();
-        let event_type: String = iter.get().unwrap();
-        //let sender = msg.sender().unwrap().clone();
-        //let path = msg.path().unwrap().clone();
-        /*
+        let event_type: Option<String> = iter.get();
         let acc = Accessible::new(
-          sender,
-          path,
+          msg.sender().unwrap(),
+          msg.path().unwrap(),
           Arc::clone(&conn)
-        );*/
+        );
         println!("{:?}", msg);
         /*
         if event_type != "focused" {
@@ -102,16 +115,8 @@ async fn main() -> Result<(), dbus::Error> {
         // Construct a proxy to the newly focused DBus object
         // I think the only time these unwraps would panic is if we were constructing a
         // message, and it wasn't fully constructed yet, so this *should* be fine
-        let accessible = Accessible::with_timeout(
-            msg.sender().unwrap(),
-            msg.path().unwrap(),
-            Arc::clone(&conn),
-            TIMEOUT,
-        );
-        println!("{:?}", accessible.localized_role_name().await);
-        accessible.children(false).await.unwrap().for_each(|a| async {
-            println!("{:?}", a.unwrap().localized_role_name().await);
-        });
+        let name = acc.name().await.unwrap();
+        let role = acc.localized_role_name().await.unwrap();
         /*
         let name_fut: MethodReply<String> = accessible.get("org.a11y.atspi.Accessible", "Name");
         let chr_cnt_fut: MethodReply<i32> = accessible.get("org.a11y.atspi.Text", "CharacterCount");
@@ -136,12 +141,14 @@ async fn main() -> Result<(), dbus::Error> {
         );
         println!("INDEX: {:?}", index_in);
         println!("{:?}", children);
+        
         let place_fut: MethodReply<(i32,)> = accessible2.method_call("org.a11y.atspi.Accessible", "GetIndexInParent", ());
         let place = tokio::try_join!(place_fut);
         println!("{:?}", place);
-        //let text = format!("{}, {}", name, role);
-        //tokio::task::spawn(speak(text));
         */
+        println!("{}, {}", name, role);
+        let text = format!("{}, {}", name, role);
+        tokio::task::spawn(speak(text));
     }
     Ok(())
 }
