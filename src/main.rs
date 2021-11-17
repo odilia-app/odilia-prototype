@@ -85,13 +85,12 @@ async fn main() -> Result<(), dbus::Error> {
         println!("Error: {:?}", error);
       }
     });
-
     // Listen for those events
     let mr = MatchRule::new_signal(StateChanged::INTERFACE, StateChanged::NAME);
     let mr2 = MatchRule::new_signal(CaretMoved::INTERFACE, CaretMoved::NAME);
+    let mr3 = MatchRule::new();
     // msgmatch must be bound, else we get no events!
     let (_msgmatch, mut stream) = conn.add_match(mr2).await?.msg_stream();
-    
 
     while let Some(msg) = stream.next().await {
         let mut iter = msg.iter_init();
