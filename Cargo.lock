@@ -612,11 +612,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "odilia-prototype"
+name = "odilia"
 version = "0.0.2"
 dependencies = [
  "atspi",
- "atspi-codegen 0.1.0 (git+https://github.com/yggdrasil-sr/atspi-codegen)",
+ "atspi-codegen",
  "dbus",
  "dbus-tokio",
  "futures",
