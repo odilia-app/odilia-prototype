@@ -33,7 +33,7 @@ dependencies = [
 [[package]]
 name = "atspi-codegen"
 version = "0.1.0"
-source = "git+https://github.com/yggdrasil-sr/atspi-codegen#2854f8f267d543f6a7b7f720e822f856986f9064"
+source = "git+https://github.com/yggdrasil-sr/atspi-codegen.git#2854f8f267d543f6a7b7f720e822f856986f9064"
 dependencies = [
  "dbus",
  "dbus-codegen",
@@ -616,6 +616,7 @@ name = "odilia"
 version = "0.0.2"
 dependencies = [
  "atspi",
+ "atspi-codegen",
  "dbus",
  "dbus-tokio",
  "futures",

@@ -6,7 +6,7 @@ version = "0.0.2"
 
 [dependencies]
 atspi = {git="https://github.com/yggdrasil-sr/atspi.git"}
-#atspi-codegen = {git = "https://github.com/yggdrasil-sr/atspi-codegen.git", features = ["nonblock"]}
+atspi-codegen = {git = "https://github.com/yggdrasil-sr/atspi-codegen.git", features = ["nonblock"]}
 dbus = {version = "0.9.5", features = ["futures"]}
 dbus-tokio = "0.7.5"
 futures = "0.3.17"

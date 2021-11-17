@@ -10,7 +10,6 @@ use dbus::{
 };
 use futures::stream::StreamExt;
 use once_cell::sync::OnceCell;
-//use once_cell::sync::Lazy;
 use tokio::sync::{Mutex, mpsc};
 use std::thread;
 
@@ -21,24 +20,23 @@ use tts_subsystem::{Priority, Speaker};
 
 const TIMEOUT: Duration = Duration::from_secs(1);
 
-// Create a lazily initialised static Speaker
-// The closure is called when `TTS` is first used, and its return value is used to initialise a
-// hidden OnceCell in this static
+//initialise a global tts object
 static TTS: OnceCell<Mutex<Speaker>> = OnceCell::new();
-//static TTS: Lazy<Mutex<Speaker>> = Lazy::new(|| Mutex::new(Speaker::new("yggdrasil").unwrap()));
 
 async fn speak(text: impl AsRef<str>) {
-    // We can use it directly here, it will automatically be initialised if necessary
     let temp = TTS.get().unwrap().lock().await;
     temp.cancel().unwrap();
-    temp.speak(Priority::Important, text.as_ref()).unwrap();
+    temp.speak(Priority::Message, text.as_ref()).unwrap();
+}
+async fn speak_non_interrupt(text: impl AsRef<str>) {
+    TTS.get().unwrap().lock().await.speak(Priority::Important, text.as_ref()).unwrap();
 }
 
 // TODO: not sure how to make async, maybe add stuff to rdev
 fn keystroke_handler(event: Event) -> Option<Event> {
   let ret_evt = match event.event_type {
     EventType::KeyPress(Key::KeyH) => {
-      println!("Focus next header");
+      speak("Focus next header");
       Some(event)
     }   
     _ => Some(event)
@@ -50,8 +48,8 @@ fn keystroke_handler(event: Event) -> Option<Event> {
 async fn main() -> Result<(), dbus::Error> {
     println!("STARTING ODILIA!");
     //I am trying to fix this by making TTS not be lazily initialised
-    TTS.set(Mutex::new(Speaker::new("yggdrasil").unwrap()))
-        .unwrap();
+    TTS.set(Mutex::new(Speaker::new("yggdrasil").unwrap())).unwrap();
+    speak_non_interrupt("welcome to odilia!").await;
     // Connect to the accessibility bus
     let (_event_loop, conn) = open_a11y_bus().await?;
     println!("{}", conn.unique_name());
