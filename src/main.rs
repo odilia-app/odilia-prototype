@@ -36,7 +36,9 @@ async fn speak_non_interrupt(text: impl AsRef<str>) {
 fn keystroke_handler(event: Event) -> Option<Event> {
   let ret_evt = match event.event_type {
     EventType::KeyPress(Key::KeyH) => {
-      speak("Focus next header");
+      println!("Focus next header");
+      // speak doesn't work inside sync function
+      // speak("Focus next header");
       Some(event)
     }   
     _ => Some(event)

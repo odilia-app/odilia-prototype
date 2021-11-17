@@ -1,0 +1,33 @@
+# Setup permissions to have uinput 
+RULES_PATH='/etc/udev/rules.d/99-odilia-sr.rules'
+MODULES_PATH='/etc/modules-load.d/uinput.conf'
+ODILIA_GROUP='odilia'
+RULES_TEXT="KERNEL==\"uinput\", MODE=\"0660\", GROUP=\"$ODILIA_GROUP\", OPTIONS+=\"static_node=uinput\""
+## END of config
+
+# get all users
+groups=$(cat /etc/group | cut -d: -f1)
+# if odilia user doesn't exist, make it 
+if [[ "$groups" == *"$ODILIA_GROUP"* ]]; then
+	useradd "$ODILIA_GROUP"
+	usermod -a -G "$ODILIA_GROUP" $USER
+	usermod -a -G "input" $USER
+	echo "Warning: Although your permissions are set up correctly, you need to log out to apply these changes."
+fi
+
+# get text of file we should have written to
+rules_text=""
+if [ -f "$RULES_PATH" ]; then
+	rules_text=$(cat "$RULES_PATH")
+fi
+# if module is not already written to, then
+if [ ! -f "$MODULES_PATH" ]; then
+	echo "uinput" | tee "$MODULES_PATH"
+fi
+# if the rule is not up to date, then replace it and reload udev
+if [[ "$rules_text" != "$RULES_TEXT" ]]; then
+	echo "$RULES_TEXT" | tee "$RULES_PATH"
+	udevadm control --reload-rules
+	echo "udev rules updated...you may need to reset to see these changes applied."
+fi
+
