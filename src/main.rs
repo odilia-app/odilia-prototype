@@ -1,3 +1,4 @@
+use odilia_input;
 use std::{sync::Arc, time::Duration, collections::HashMap};
 use rdev::{grab_async, listen, Event, EventType, Key};
 
@@ -64,15 +65,27 @@ async fn keystroke_handler(event: Event) -> Option<Event> {
   ret_evt
 }
 
+async fn keys(keys: Vec<Key>) -> bool {
+  print!("KEYS: [");
+  for k in keys {
+    print!("\"{:?}\"+", k);
+  }
+  println!("]");
+  // WARNING!!!!! true will eat ALL events if used here.... You do not want this. Be careful.
+  false
+}
+
 #[tokio::main]
 async fn main() -> Result<(), dbus::Error> {
     println!("STARTING ODILIA!");
     //I am trying to fix this by making TTS not be lazily initialised
     TTS.set(Mutex::new(Speaker::new("yggdrasil").unwrap())).unwrap();
+    odilia_input::initialize_key_register(keys).await;
     // get key event listeners set up
+    /*
     if let Err(error) = grab_async(keystroke_handler).await {
       println!("Error: {:?}", error);
-    }
+    }*/
     speak_non_interrupt("welcome to odilia!").await;
     // Connect to the accessibility bus
     let (_event_loop, conn) = open_a11y_bus().await?;
