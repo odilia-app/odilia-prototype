@@ -1,5 +1,5 @@
 use std::{sync::Arc, time::Duration, collections::HashMap};
-use rdev::{grab, listen, Event, EventType, Key};
+use rdev::{grab_async, listen, Event, EventType, Key};
 
 use atspi::Accessible;
 
@@ -33,14 +33,32 @@ async fn speak_non_interrupt(text: impl AsRef<str>) {
 }
 
 // TODO: not sure how to make async, maybe add stuff to rdev
-fn keystroke_handler(event: Event) -> Option<Event> {
+async fn keystroke_handler(event: Event) -> Option<Event> {
   let ret_evt = match event.event_type {
     EventType::KeyPress(Key::KeyH) => {
-      println!("Focus next header");
-      // speak doesn't work inside sync function
-      // speak("Focus next header");
-      Some(event)
-    }   
+      speak("Focus next header").await;
+      None
+    }
+    EventType::KeyPress(Key::KeyL) => {
+      speak("Focus next list").await;
+      None
+    } 
+    EventType::KeyPress(Key::KeyT) => {
+      speak("Focus next table").await;
+      None
+    } 
+    EventType::KeyPress(Key::KeyK) => {
+      speak("Focus next link").await;
+      None
+    } 
+    EventType::KeyPress(Key::KeyP) => {
+      speak("Focus next paragraph").await;
+      None
+    } 
+    EventType::KeyPress(Key::KeyI) => {
+      speak("Focus next list item").await;
+      None
+    } 
     _ => Some(event)
   };
   ret_evt
@@ -51,6 +69,10 @@ async fn main() -> Result<(), dbus::Error> {
     println!("STARTING ODILIA!");
     //I am trying to fix this by making TTS not be lazily initialised
     TTS.set(Mutex::new(Speaker::new("yggdrasil").unwrap())).unwrap();
+    // get key event listeners set up
+    if let Err(error) = grab_async(keystroke_handler).await {
+      println!("Error: {:?}", error);
+    }
     speak_non_interrupt("welcome to odilia!").await;
     // Connect to the accessibility bus
     let (_event_loop, conn) = open_a11y_bus().await?;
@@ -83,12 +105,6 @@ async fn main() -> Result<(), dbus::Error> {
         TIMEOUT,
         Arc::clone(&conn),
     );
-    // get key event listeners set up
-    let _listener = thread::spawn(move || {
-      if let Err(error) = grab(keystroke_handler) {
-        println!("Error: {:?}", error);
-      }
-    });
     // Listen for those events
     let mr = MatchRule::new_signal(StateChanged::INTERFACE, StateChanged::NAME);
     let mr2 = MatchRule::new_signal(CaretMoved::INTERFACE, CaretMoved::NAME);
