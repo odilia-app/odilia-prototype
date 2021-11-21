@@ -1,4 +1,6 @@
+use odilia_input;
 use std::{sync::Arc, time::Duration, collections::HashMap};
+use rdev::{grab_async, listen, Event, EventType, Key};
 
 use atspi::Accessible;
 
@@ -9,8 +11,8 @@ use dbus::{
 };
 use futures::stream::StreamExt;
 use once_cell::sync::OnceCell;
-//use once_cell::sync::Lazy;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, mpsc};
+use std::thread;
 
 use atspi_codegen::event::OrgA11yAtspiEventObjectStateChanged as StateChanged;
 use atspi_codegen::event::OrgA11yAtspiEventObjectTextCaretMoved as CaretMoved;
@@ -19,28 +21,75 @@ use tts_subsystem::{Priority, Speaker};
 
 const TIMEOUT: Duration = Duration::from_secs(1);
 
-// Create a lazily initialised static Speaker
-// The closure is called when `TTS` is first used, and its return value is used to initialise a
-// hidden OnceCell in this static
+//initialise a global tts object
 static TTS: OnceCell<Mutex<Speaker>> = OnceCell::new();
-//static TTS: Lazy<Mutex<Speaker>> = Lazy::new(|| Mutex::new(Speaker::new("yggdrasil").unwrap()));
 
 async fn speak(text: impl AsRef<str>) {
-    // We can use it directly here, it will automatically be initialised if necessary
     let temp = TTS.get().unwrap().lock().await;
     temp.cancel().unwrap();
-    temp.speak(Priority::Important, text.as_ref()).unwrap();
+    temp.speak(Priority::Message, text.as_ref()).unwrap();
+}
+async fn speak_non_interrupt(text: impl AsRef<str>) {
+    TTS.get().unwrap().lock().await.speak(Priority::Important, text.as_ref()).unwrap();
+}
+
+// TODO: not sure how to make async, maybe add stuff to rdev
+async fn keystroke_handler(event: Event) -> Option<Event> {
+  let ret_evt = match event.event_type {
+    EventType::KeyPress(Key::KeyH) => {
+      speak("Focus next header").await;
+      None
+    }
+    EventType::KeyPress(Key::KeyL) => {
+      speak("Focus next list").await;
+      None
+    } 
+    EventType::KeyPress(Key::KeyT) => {
+      speak("Focus next table").await;
+      None
+    } 
+    EventType::KeyPress(Key::KeyK) => {
+      speak("Focus next link").await;
+      None
+    } 
+    EventType::KeyPress(Key::KeyP) => {
+      speak("Focus next paragraph").await;
+      None
+    } 
+    EventType::KeyPress(Key::KeyI) => {
+      speak("Focus next list item").await;
+      None
+    } 
+    _ => Some(event)
+  };
+  ret_evt
+}
+
+async fn keys(keys: Vec<Key>) -> bool {
+  print!("KEYS: [");
+  for k in keys {
+    print!("\"{:?}\"+", k);
+  }
+  println!("]");
+  // WARNING!!!!! true will eat ALL events if used here.... You do not want this. Be careful.
+  false
 }
 
 #[tokio::main]
 async fn main() -> Result<(), dbus::Error> {
-    println!("STARTING YGGDRASIL!");
+    println!("STARTING ODILIA!");
     //I am trying to fix this by making TTS not be lazily initialised
-    TTS.set(Mutex::new(Speaker::new("yggdrasil").unwrap()))
-        .unwrap();
+    TTS.set(Mutex::new(Speaker::new("yggdrasil").unwrap())).unwrap();
+    odilia_input::initialize_key_register(keys).await;
+    // get key event listeners set up
+    /*
+    if let Err(error) = grab_async(keystroke_handler).await {
+      println!("Error: {:?}", error);
+    }*/
+    speak_non_interrupt("welcome to odilia!").await;
     // Connect to the accessibility bus
     let (_event_loop, conn) = open_a11y_bus().await?;
-    // Create a proxy object that interacts with the at-spi registry
+    println!("{}", conn.unique_name());
     let addr1 = Proxy::new(
         "org.a11y.atspi.Registry",
         "/org/a11y/atspi/registry/deviceeventcontroller",
@@ -53,49 +102,46 @@ async fn main() -> Result<(), dbus::Error> {
         TIMEOUT,
         Arc::clone(&conn),
     );
-    // Tell at-spi we're interested in focus events
+    
+ // Tell at-spi we're interested in focus events
     registry
         .method_call(
             "org.a11y.atspi.Registry",
             "RegisterEvent",
-            ("Object::TextCaretChanged\0",)
+            ("Object:TextCaretMoved\0",)
         )
         .await?;
 
-    let v: Vec<(i32, i32, &str, i32)> = Vec::new();
-
-    let dev_succ = addr1.register_device_event_listener(dbus::Path::from("/org/a11y/listeners/0"), 1 as u32).await?;
-    println!("DEV: {:?}", dev_succ);
-
-    let success: MethodReply<(bool, )> = addr1.method_call(
+    let matching = Proxy::new(
         "org.a11y.atspi.DeviceEventController",
-        "RegisterKeystrokeListener",
-        (
-        dbus::Path::from("/org/a11y/atspi/listeners/0"),
-         v,
-         43 as u32,
-         3 as u32,
-         (true, true, false)));
-    println!("{:?}", tokio::try_join!(success));
+        "/org/a11y/atspi/listeners/0",
+        TIMEOUT,
+        Arc::clone(&conn),
+    );
     // Listen for those events
     let mr = MatchRule::new_signal(StateChanged::INTERFACE, StateChanged::NAME);
     let mr2 = MatchRule::new_signal(CaretMoved::INTERFACE, CaretMoved::NAME);
     let mr3 = MatchRule::new_signal("org.a11y.atspi.DeviceEventController", "NotifyListenersSync");
     //let mr3 = mr3.with_path("/org/a11y/atspi/listeners/0");
     // msgmatch must be bound, else we get no events!
-    let (_msgmatch, mut stream) = conn.add_match(mr3).await?.msg_stream();
+    let (_msgmatch, mut stream) = conn.add_match(mr2).await?.msg_stream();
+
     while let Some(msg) = stream.next().await {
         let mut iter = msg.iter_init();
+<<<<<<< HEAD
         println!("{:?}", iter);
         let event_type: String = iter.get().unwrap();
         //let sender = msg.sender().unwrap().clone();
         //let path = msg.path().unwrap().clone();
         /*
+=======
+        let event_type: Option<String> = iter.get();
+>>>>>>> 2c259b8063a33a493aaadf77092e700902b4f8b4
         let acc = Accessible::new(
-          sender,
-          path,
+          msg.sender().unwrap(),
+          msg.path().unwrap(),
           Arc::clone(&conn)
-        );*/
+        );
         println!("{:?}", msg);
         /*
         if event_type != "focused" {
@@ -110,16 +156,8 @@ async fn main() -> Result<(), dbus::Error> {
         // Construct a proxy to the newly focused DBus object
         // I think the only time these unwraps would panic is if we were constructing a
         // message, and it wasn't fully constructed yet, so this *should* be fine
-        let accessible = Accessible::with_timeout(
-            msg.sender().unwrap(),
-            msg.path().unwrap(),
-            Arc::clone(&conn),
-            TIMEOUT,
-        );
-        println!("{:?}", accessible.localized_role_name().await);
-        accessible.children(false).await.unwrap().for_each(|a| async {
-            println!("{:?}", a.unwrap().localized_role_name().await);
-        });
+        let name = acc.name().await.unwrap();
+        let role = acc.localized_role_name().await.unwrap();
         /*
         let name_fut: MethodReply<String> = accessible.get("org.a11y.atspi.Accessible", "Name");
         let chr_cnt_fut: MethodReply<i32> = accessible.get("org.a11y.atspi.Text", "CharacterCount");
@@ -135,7 +173,11 @@ async fn main() -> Result<(), dbus::Error> {
             accessible.method_call("org.a11y.atspi.Text", "GetText", (0, chr_cnt.unwrap().0));
         let index_in_fut: MethodReply<(i32,)> = accessible.method_call("org.a11y.atspi.Accessible", "GetIndexInParent", ());
         let (name, (role,), (attrs,), (text,), (index_in,)) = tokio::try_join!(name_fut, role_fut, attrs_fut, text_fut, index_in_fut)?;
-        println!("<{0}>{1}</{0}>", attrs.get("tag").unwrap(), text);
+        */
+        let attrs = acc.attrs().await;
+        println!("{:?}", attrs);
+        //println!("<{0}>{1}</{0}>", attrs.get("tag").unwrap(), text);
+        /*
         let accessible2 = Proxy::new(
             msg.sender().unwrap(),
             & children.1,
@@ -144,12 +186,14 @@ async fn main() -> Result<(), dbus::Error> {
         );
         println!("INDEX: {:?}", index_in);
         println!("{:?}", children);
+        
         let place_fut: MethodReply<(i32,)> = accessible2.method_call("org.a11y.atspi.Accessible", "GetIndexInParent", ());
         let place = tokio::try_join!(place_fut);
         println!("{:?}", place);
-        //let text = format!("{}, {}", name, role);
-        //tokio::task::spawn(speak(text));
         */
+        println!("{}, {}", name, role);
+        let text = format!("{}, {}", name, role);
+        tokio::task::spawn(speak(text));
     }
     Ok(())
 }
