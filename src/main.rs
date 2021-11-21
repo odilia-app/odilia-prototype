@@ -3,23 +3,19 @@ use std::{sync::Arc, time::Duration};
 use dbus::{
     channel::Channel,
     message::{MatchRule, SignalArgs},
-    nonblock::{stdintf::org_freedesktop_dbus::Properties, MethodReply, Proxy, SyncConnection},
+    nonblock::{Proxy, SyncConnection},
 };
 use futures::stream::StreamExt;
 use once_cell::sync::OnceCell;
 //use once_cell::sync::Lazy;
-use tokio::sync::Mutex;
-
+use atspi::Accessible;
 use atspi_codegen::event::OrgA11yAtspiEventObjectStateChanged as StateChanged;
+use tokio::sync::Mutex;
 use tts_subsystem::{Priority, Speaker};
 
 const TIMEOUT: Duration = Duration::from_secs(1);
 
-// Create a lazily initialised static Speaker
-// The closure is called when `TTS` is first used, and its return value is used to initialise a
-// hidden OnceCell in this static
 static TTS: OnceCell<Mutex<Speaker>> = OnceCell::new();
-//static TTS: Lazy<Mutex<Speaker>> = Lazy::new(|| Mutex::new(Speaker::new("yggdrasil").unwrap()));
 
 async fn speak(text: impl AsRef<str>) {
     // We can use it directly here, it will automatically be initialised if necessary
@@ -70,20 +66,162 @@ async fn main() -> Result<(), dbus::Error> {
         // Construct a proxy to the newly focused DBus object
         // I think the only time these unwraps would panic is if we were constructing a
         // message, and it wasn't fully constructed yet, so this *should* be fine
-        let accessible = Proxy::new(
+
+        let accessible = Accessible::new(
             msg.sender().unwrap(),
             msg.path().unwrap(),
-            TIMEOUT,
             Arc::clone(&conn),
         );
+        /*
         let name_fut: MethodReply<String> = accessible.get("org.a11y.atspi.Accessible", "Name");
         let role_fut: MethodReply<(String,)> =
             accessible.method_call("org.a11y.atspi.Accessible", "GetLocalizedRoleName", ());
         let (name, (role,)) = tokio::try_join!(name_fut, role_fut)?;
-        let text = format!("{}, {}", name, role);
+        */
+        let name = accessible.name().await.unwrap();
+        let role = accessible.role().await.unwrap();
+        handle_role(role);
+        let text = format!("{}, {}", name, handle_role(role));
         tokio::task::spawn(speak(text));
     }
     Ok(())
+}
+type Role = atspi::enums::AtspiRole;
+fn handle_role(role: atspi::enums::AtspiRole) -> &'static str {
+    match role {
+        Role::Invalid => "invalid component",
+        Role::AcceleratorLable => "accelerator",
+        Role::Alert => "alert",
+        Role::Animation => "animation",
+        Role::Arrow => "arrow",
+        Role::Calendar => "calendar controll",
+        Role::Canvas => "canvas",
+        Role::Checkbox => "checkbox",
+        Role::CheckMenuItem => "check menu item",
+        Role::ColorChooser => "color picker",
+        Role::ColumnHeader => "column header",
+        Role::ComboBox => "combo box",
+        Role::DateEditor => "date picker",
+        Role::DesktopIcon => "desktop icon",
+        Role::DesktopFrame => "desktop",
+        Role::Dile => "dialer",
+        Role::Dialog => "dialog",
+        Role::DirectoryPane => "directory panel",
+        Role::DrawingArea => "drawing zone",
+        Role::FileChooser => "file picker",
+        Role::Filler => "filler",
+        Role::FocusTraversable => "focus traversable",
+        Role::FontChooser => "font picker",
+        Role::Frame => "frame",
+        Role::GlassPane => "transparent pannel",
+        Role::HTMLContainer => "html container",
+        Role::Icon => "icon",
+        Role::Image => "grafic",
+        Role::InternalFrame => "internal frame",
+        Role::Label => "static text",
+        Role::LayerdPane => "layered layout",
+        Role::List => "list",
+        Role::ListItem => "list item",
+        Role::Menu => "menu",
+        Role::MenuBar => "menu bar",
+        Role::MenuItem => "menu item",
+        Role::OptionPane => "option selector",
+        Role::PageTab => "tab control",
+        Role::PageTabList => "tab list",
+        Role::Panel => "panel layout",
+        Role::PasswordText => "secure text box",
+        Role::PopupMenu => "popup",
+        Role::ProgressBar => "progress bar",
+        Role::PushButton => "button",
+        Role::RadioButton => "radio button",
+        Role::RadioMenuItem => "radio menu item",
+        Role::RootPane => "root container",
+        Role::RowHeader => "row header",
+        Role::ScrollBar => "scroll widget",
+        Role::ScrollPane => "scrollable panel",
+        Role::Separator => "separator",
+        Role::Slider => "slider",
+        Role::SpinButton => "spinner",
+        Role::SplitPane => "split panel",
+        Role::StatusBar => "status bar",
+        Role::Table => "table",
+        Role::TableCell => "table cel",
+        Role::TableColumnHeader => "column header",
+        Role::TableRowHeader => "row header",
+        Role::TearOffMenuItem => "tare off menu item",
+        Role::Terminal => "terminal",
+        Role::Text => "text area",
+        Role::ToggleButton => "toggle",
+        Role::ToolBar => "tool bar",
+        Role::ToolTip => "tool tip",
+        Role::Tree => "treeview",
+        Role::TreeTable => "tree table",
+        Role::Unknown => "unknown",
+        Role::ViewPort => "view",
+        Role::Window => "window",
+        Role::Extended => "extended",
+        Role::Header => "header",
+        Role::Footer => "footer",
+        Role::Paragraph => "paragraph",
+        Role::Ruler => "ruler",
+        Role::Application => "application",
+        Role::AutoComplete => "autocomplete",
+        Role::EditBar => "edit bar",
+        Role::Embedded => "embedded object",
+        Role::Entry => "edit box",
+        Role::Chart => "chart",
+        Role::Caption => "caption",
+        Role::DocumentFrame => "document container",
+        Role::Heading => "title",
+        Role::Page => "page",
+        Role::Section => "section",
+        Role::RedundantObject => "",
+        Role::Form => "form control",
+        Role::Link => "link",
+        Role::InputMethodWindow => "input method dialog",
+        Role::TableRow => "row",
+        Role::TreeItem => "treeview item",
+        Role::DocumentSpreadsheet => "spreadsheet",
+        Role::DocumentPresentation => "presentation",
+        Role::DocumentText => "text",
+        Role::DocumentWeb => "webview component",
+        Role::DocumentEmail => "email",
+        Role::Comment => "comment",
+        Role::ListBox => "list box",
+        Role::Grouping => "group",
+        Role::ImageMap => "image map",
+        Role::Notification => "notification",
+        Role::InfoBar => "info",
+        Role::LevelBar => "level bar",
+        Role::TitleBar => "title",
+        Role::BlockQuote => "block quote",
+        Role::Audio => "audioplayer",
+        Role::Video => "videoplayer",
+        Role::Definition => "definition",
+        Role::Article => "article",
+        Role::Landmark => "landmark",
+        Role::Log => "log",
+        Role::Marquee => "marquee",
+        Role::Math => "math area",
+        Role::Raiting => "raiting",
+        Role::Timer => "timer controll",
+        Role::Static => "static",
+        Role::MathFraction => "fraction",
+        Role::MathRoot => "root",
+        Role::Subscript => "subscript",
+        Role::Superscript => "superscript",
+        Role::DescriptionList => "description list",
+        Role::DescriptionTerm => "description term",
+        Role::DescriptionValue => "description value",
+    Role::Footnote => "footnote",
+        Role::ContentDeletion => "      deleted",
+        Role::ContentInsertion => "inserted",
+        Role::Mark => "marked content",
+        Role::Suggestion => "suggestion",
+        Role::LastDefined => "last defined",
+        Role::Unknown => "unknown",
+        _ => "",
+    }
 }
 
 /// Opens a connection to the session bus, grabs the address of the a11y bus, and disconnects from

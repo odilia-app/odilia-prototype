@@ -5,6 +5,7 @@ authors = ["Michael Connor Buchan <mikey@blindcomputing.org>"]
 edition = "2021"
 
 [dependencies]
+atspi={git="https://github.com/yggdrasil-sr/atspi.git"}
 atspi-codegen = { git = "https://github.com/yggdrasil-sr/atspi-codegen", features = ["nonblock"] }
 dbus = { version = "0.9.5", features = ["futures"] }
 dbus-tokio = "0.7.5"
