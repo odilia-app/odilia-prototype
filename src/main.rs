@@ -74,7 +74,7 @@ async fn main() -> Result<(), dbus::Error> {
     let mut kmap: HashMap<KeyBinding, AsyncFn> = HashMap::new();
 
     kmap.insert("h".parse().unwrap(), boxit(next_header).await);
-    kmap.insert("f".parse().unwrap(), boxit(find_in_tree).await);
+    kmap.insert("Odilia+f".parse().unwrap(), boxit(find_in_tree).await);
     kmap.insert("Shift+h".parse().unwrap(), boxit(previous_header).await);
 
     println!("STARTING ODILIA!");
@@ -129,20 +129,18 @@ async fn main() -> Result<(), dbus::Error> {
 
     while let Some(msg) = stream.next().await {
         let mut iter = msg.iter_init();
-<<<<<<< HEAD
         println!("{:?}", iter);
-        let event_type: String = iter.get().unwrap();
-        //let sender = msg.sender().unwrap().clone();
-        //let path = msg.path().unwrap().clone();
-        /*
-=======
-        let event_type: Option<String> = iter.get();
->>>>>>> 2c259b8063a33a493aaadf77092e700902b4f8b4
         let acc = Accessible::new(
           msg.sender().unwrap(),
           msg.path().unwrap(),
           Arc::clone(&conn)
         );
+        let event_type: String = iter.get().unwrap();
+        let name = acc.name().await.unwrap();
+        let role = acc.localized_role_name().await.unwrap();
+        //let sender = msg.sender().unwrap().clone();
+        //let path = msg.path().unwrap().clone();
+        /*
         println!("{:?}", msg);
         /*
         if event_type != "focused" {
@@ -157,8 +155,7 @@ async fn main() -> Result<(), dbus::Error> {
         // Construct a proxy to the newly focused DBus object
         // I think the only time these unwraps would panic is if we were constructing a
         // message, and it wasn't fully constructed yet, so this *should* be fine
-        let name = acc.name().await.unwrap();
-        let role = acc.localized_role_name().await.unwrap();
+  */
         /*
         let name_fut: MethodReply<String> = accessible.get("org.a11y.atspi.Accessible", "Name");
         let chr_cnt_fut: MethodReply<i32> = accessible.get("org.a11y.atspi.Text", "CharacterCount");
