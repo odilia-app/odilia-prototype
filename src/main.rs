@@ -1,6 +1,14 @@
-use odilia_input;
-use std::{sync::Arc, time::Duration, collections::HashMap};
-use rdev::{grab_async, listen, Event, EventType, Key};
+#[macro_use]
+extern crate lazy_static;
+
+use odilia_input::{
+  init as input_init,EventAction,AsyncFn
+};
+use odilia_common::{
+  input::KeyBinding
+};
+use std::{sync::Arc, time::Duration, collections::HashMap, future::Future};
+use rdev::{Event as RDevEvent, EventType, Key};
 
 use atspi::Accessible;
 
@@ -21,6 +29,7 @@ use tts_subsystem::{Priority, Speaker};
 
 const TIMEOUT: Duration = Duration::from_secs(1);
 
+
 //initialise a global tts object
 static TTS: OnceCell<Mutex<Speaker>> = OnceCell::new();
 
@@ -33,54 +42,46 @@ async fn speak_non_interrupt(text: impl AsRef<str>) {
     TTS.get().unwrap().lock().await.speak(Priority::Important, text.as_ref()).unwrap();
 }
 
-// TODO: not sure how to make async, maybe add stuff to rdev
-async fn keystroke_handler(event: Event) -> Option<Event> {
-  let ret_evt = match event.event_type {
-    EventType::KeyPress(Key::KeyH) => {
-      speak("Focus next header").await;
-      None
-    }
-    EventType::KeyPress(Key::KeyL) => {
-      speak("Focus next list").await;
-      None
-    } 
-    EventType::KeyPress(Key::KeyT) => {
-      speak("Focus next table").await;
-      None
-    } 
-    EventType::KeyPress(Key::KeyK) => {
-      speak("Focus next link").await;
-      None
-    } 
-    EventType::KeyPress(Key::KeyP) => {
-      speak("Focus next paragraph").await;
-      None
-    } 
-    EventType::KeyPress(Key::KeyI) => {
-      speak("Focus next list item").await;
-      None
-    } 
-    _ => Some(event)
-  };
-  ret_evt
+async fn next_header() {
+  speak("Next header").await;
 }
 
-async fn keys(keys: Vec<Key>) -> bool {
-  print!("KEYS: [");
-  for k in keys {
-    print!("\"{:?}\"+", k);
-  }
-  println!("]");
-  // WARNING!!!!! true will eat ALL events if used here.... You do not want this. Be careful.
-  false
+async fn find_in_tree() {
+  speak("Find in tree").await;
+}
+
+async fn previous_header() {
+  speak("Previous header").await;
+}
+
+/*
+Creating a function to turn an async function into the AsyncFn type from odilia-input
+*/
+async fn boxit<F,T>(func: F) -> AsyncFn
+where
+  F: Fn() -> T + Send + 'static + Sync,
+  T: Future<Output=()> + Send + 'static,
+{
+  Box::new(move || {Box::new(Box::pin(func()))})
+}
+
+fn rdev_event_bs(ev: &RDevEvent) -> EventAction {
+  EventAction::Passthrough
 }
 
 #[tokio::main]
 async fn main() -> Result<(), dbus::Error> {
+    let mut kmap: HashMap<KeyBinding, AsyncFn> = HashMap::new();
+
+    kmap.insert("h".parse().unwrap(), boxit(next_header).await);
+    kmap.insert("f".parse().unwrap(), boxit(find_in_tree).await);
+    kmap.insert("Shift+h".parse().unwrap(), boxit(previous_header).await);
+
     println!("STARTING ODILIA!");
     //I am trying to fix this by making TTS not be lazily initialised
     TTS.set(Mutex::new(Speaker::new("yggdrasil").unwrap())).unwrap();
-    odilia_input::initialize_key_register(keys).await;
+
+    input_init(rdev_event_bs, kmap);
     // get key event listeners set up
     /*
     if let Err(error) = grab_async(keystroke_handler).await {

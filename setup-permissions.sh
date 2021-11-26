@@ -12,14 +12,10 @@ user=$(logname)
 groups=$(cat /etc/group | cut -d: -f1)
 # if odilia user doesn't exist, make it, add currect user to it, and add current user to input group.
 # 	techincally, we should only need to do one of these, but some distros do not have automatic `input` group permissions.
-if [[ "$groups" =~ /*$ODILIA_GROUP*/ ]]; then
-	useradd "$ODILIA_GROUP"
-	usermod -a -G "$ODILIA_GROUP" $user
-	usermod -a -G "input" $user
-	echo "Warning: Although your permissions are set up correctly, you need to log out to apply these changes."
-else
-	echo "permissions already setup"
-fi
+groupadd "$ODILIA_GROUP"
+usermod -a -G "$ODILIA_GROUP" $user
+usermod -a -G "input" $user
+echo "Warning: Although your permissions are set up correctly, you need to log out to apply these changes."
 
 # get text of file we should have written to
 rules_text=""
