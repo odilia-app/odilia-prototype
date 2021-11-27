@@ -12,8 +12,8 @@ dbus-tokio = "0.7.5"
 futures = "0.3.17"
 once_cell = "1.8.0"
 rdev = "0.5.1"
-odilia-common = {git="https://github.com/yggdrasil-sr/odilia-common"}
-odilia-input = { path="../odilia-input" } #git = "https://github.com/yggdrasil-sr/odilia-input"}
+odilia-common = {git="https://github.com/yggdrasil-sr/odilia-common" }
+odilia-input = { git = "https://github.com/yggdrasil-sr/odilia-input" }
 tokio = {version = "1.14.0", features = ["full"]}
 tts_subsystem = {git = "https://github.com/yggdrasil-sr/tts_subsystem"}
 lazy_static = "1.4.0"
