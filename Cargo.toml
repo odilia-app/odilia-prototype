@@ -1,13 +1,19 @@
 [package]
-name = "yggdrasil-prototype"
-version = "0.4.20"
+authors = ["Michael Connor Buchan <mikey@blindcomputing.org>", "Tait Hoyem <tait@tait.tech>", "alberto tirla<albertotirla@gmail.com>"]
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+name = "odilia"
+version = "0.0.2"
 
 [dependencies]
-atspi={git="https://github.com/yggdrasil-sr/atspi-rs.git"}
+atspi = {git="https://github.com/yggdrasil-sr/atspi.git"}
+atspi-codegen = {git = "https://github.com/yggdrasil-sr/atspi-codegen.git", features = ["nonblock"]}
+dbus = {version = "0.9.5", features = ["futures"]}
+dbus-tokio = "0.7.5"
+futures = "0.3.17"
 once_cell = "1.8.0"
-tts_subsystem={git="https://github.com/yggdrasil-sr/tts_subsystem.git"}
-
-[features]
+rdev = "0.5.1"
+odilia-common = {git="https://github.com/yggdrasil-sr/odilia-common" }
+odilia-input = { git = "https://github.com/yggdrasil-sr/odilia-input" }
+tokio = {version = "1.14.0", features = ["full"]}
+tts_subsystem = {git = "https://github.com/yggdrasil-sr/tts_subsystem"}
+lazy_static = "1.4.0"
