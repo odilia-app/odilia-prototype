@@ -1,13 +1,14 @@
 #[macro_use]
 extern crate lazy_static;
-
+use crate::lazy_static::__Deref;
 use odilia_input::{
   init as input_init,EventAction,AsyncFn
 };
 use odilia_common::{
-  input::KeyBinding
+  input::{KeyBinding,KeyEvent,Modifiers},
+  modes::ScreenReaderMode,
 };
-use std::{sync::Arc, time::Duration, collections::HashMap, future::Future};
+use std::{sync::Arc, sync::Mutex as SyncMutex, time::Duration, collections::HashMap, future::Future};
 use rdev::{Event as RDevEvent, EventType, Key};
 
 use atspi::Accessible;
@@ -29,9 +30,30 @@ use tts_subsystem::{Priority, Speaker};
 
 const TIMEOUT: Duration = Duration::from_secs(1);
 
-
 //initialise a global tts object
 static TTS: OnceCell<Mutex<Speaker>> = OnceCell::new();
+lazy_static! {
+// TODO: static set init
+  static ref ACTIVE_MODE: Arc<SyncMutex<ScreenReaderMode>> = Arc::new(SyncMutex::new(ScreenReaderMode::new("CommandMode")));
+  static ref KMAP: Arc<SyncMutex<HashMap<KeyBinding, AsyncFn>>> = Arc::new(SyncMutex::new(HashMap::new()));
+}
+
+fn find_keybind(kev: KeyEvent, mode: ScreenReaderMode) -> Option<KeyBinding> {
+    let kbdfns = KMAP.lock().unwrap();
+    for (kb, _) in kbdfns.iter() {
+        let mut matches = true;
+        matches &= kev.key == kb.key;
+        matches &= (kev.mods == Modifiers::NONE && kb.mods == Modifiers::NONE) || kb.mods.intersects(kev.mods);
+        matches &= kev.repeat == kb.repeat;
+        if let Some(m1) = &kb.mode {
+            matches &= *m1 == mode;
+        }
+        if matches {
+            return Some(kb.clone());
+        }
+    }
+    None
+}
 
 async fn speak(text: impl AsRef<str>) {
     let temp = TTS.get().unwrap().lock().await;
@@ -66,23 +88,40 @@ where
   Box::new(move || {Box::new(Box::pin(func()))})
 }
 
-fn rdev_event_bs(ev: &RDevEvent) -> EventAction {
+/* this needs to run as fast as possible; the longer it takes, the longer it takes a key to propagate, if it is not consumed. */
+fn rdev_event_bs(ev: &KeyEvent) -> EventAction {
+  // I don't like needing to wait on an Arc<Mutex<_>> here. There must be a better way...
+  // and the cloning... there is a better way, I just don't know how yet.
+  if let Ok(mode) = ACTIVE_MODE.lock() {
+      if let Some(kb) = find_keybind(ev.clone(), mode.clone()) {
+        return match kb.consume {
+          false => EventAction::Passthrough,
+          true => EventAction::Consume,
+        }
+      }
+  }
+  // fail safe case, just pass everything through
   EventAction::Passthrough
 }
 
 #[tokio::main]
 async fn main() -> Result<(), dbus::Error> {
-    let mut kmap: HashMap<KeyBinding, AsyncFn> = HashMap::new();
-
+    let mut kmap = HashMap::new();
     kmap.insert("h".parse().unwrap(), boxit(next_header).await);
     kmap.insert("Odilia+f".parse().unwrap(), boxit(find_in_tree).await);
     kmap.insert("Shift+h".parse().unwrap(), boxit(previous_header).await);
+    // now set the global keymap
+    {
+      if let Ok(mut g_kmap) = KMAP.lock() {
+        *g_kmap = kmap;
+      }
+    }
 
     println!("STARTING ODILIA!");
     //I am trying to fix this by making TTS not be lazily initialised
     TTS.set(Mutex::new(Speaker::new("yggdrasil").unwrap())).unwrap();
 
-    input_init(rdev_event_bs, kmap);
+    input_init(rdev_event_bs);
     // get key event listeners set up
     /*
     if let Err(error) = grab_async(keystroke_handler).await {
