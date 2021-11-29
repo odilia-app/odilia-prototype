@@ -5,14 +5,16 @@ use odilia_input::{
   keybinds::{
     add_keybind,
     run_keybind_func,
+    get_sr_mode,
+    set_sr_mode,
   },
 };
 use odilia_common::{
-  input::{KeyBinding,KeyEvent,Modifiers},
+  input::{KeyBinding,KeyEvent,Modifiers,Key},
   modes::ScreenReaderMode,
 };
 use std::{sync::Arc, sync::Mutex as SyncMutex, time::Duration, collections::HashMap, future::Future};
-use rdev::{Event as RDevEvent, EventType, Key};
+use rdev::{Event as RDevEvent, EventType};
 
 use atspi::Accessible;
 
@@ -61,6 +63,18 @@ async fn previous_header() {
   speak("Previous header").await;
 }
 
+async fn activate_focus_mode() {
+  let fm = ScreenReaderMode::new("FocusMode");
+  set_sr_mode(fm).await;
+  speak("Focus mode").await;
+}
+
+async fn activate_browse_mode() {
+  let bm = ScreenReaderMode::new("BrowseMode");
+  set_sr_mode(bm).await;
+  speak("Browse Mode").await;
+}
+
 async fn nothing(){}
 
 #[tokio::main]
@@ -74,10 +88,20 @@ async fn main() -> Result<(), dbus::Error> {
         mode: None,
         notify: false,
     };
+    let find_in_tree_kb = KeyBinding {
+        key: Some(Key::Other('f')),
+        mods: Modifiers::ODILIA,
+        repeat: 1,
+        consume: true,
+        mode: Some(ScreenReaderMode::new("BrowseMode")),
+        notify: true,
+    };
     add_keybind(ocap, nothing).await;
     add_keybind("h".parse().unwrap(), next_header).await;
-    add_keybind("C|Odilia+f".parse().unwrap(), find_in_tree).await;
+    add_keybind(find_in_tree_kb, find_in_tree).await;
     add_keybind("Shift+h".parse().unwrap(), previous_header).await;
+    add_keybind("Odilia+b".parse().unwrap(), activate_browse_mode).await;
+    add_keybind("Odilia+a".parse().unwrap(), activate_focus_mode).await;
 
     println!("STARTING ODILIA!");
     //I am trying to fix this by making TTS not be lazily initialised
