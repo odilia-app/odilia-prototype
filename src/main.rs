@@ -16,7 +16,11 @@ use odilia_common::{
 use std::{sync::Arc, sync::Mutex as SyncMutex, time::Duration, collections::HashMap, future::Future};
 use rdev::{Event as RDevEvent, EventType};
 
-use atspi::Accessible;
+use atspi::{
+  Accessible,
+  Registry,
+  enums::AtspiRole,
+};
 
 use dbus::{
     channel::Channel,
@@ -25,7 +29,10 @@ use dbus::{
 };
 use futures::stream::StreamExt;
 use once_cell::sync::OnceCell;
-use tokio::sync::{Mutex};
+use tokio::sync::{
+  Mutex,
+  mpsc::Receiver
+};
 
 use atspi_codegen::event::OrgA11yAtspiEventObjectStateChanged as StateChanged;
 use atspi_codegen::event::OrgA11yAtspiEventObjectTextCaretMoved as CaretMoved;
@@ -36,6 +43,7 @@ const TIMEOUT: Duration = Duration::from_secs(1);
 
 //initialise a global tts object
 static TTS: OnceCell<Mutex<Speaker>> = OnceCell::new();
+static FOCUSED_A11Y: OnceCell<Mutex<Accessible>> = OnceCell::new();
 lazy_static! {
 // TODO: static set init
   static ref ACTIVE_MODE: Arc<SyncMutex<ScreenReaderMode>> = Arc::new(SyncMutex::new(ScreenReaderMode::new("CommandMode")));
@@ -51,8 +59,23 @@ async fn speak_non_interrupt(text: impl AsRef<str>) {
     TTS.get().unwrap().lock().await.speak(Priority::Important, text.as_ref()).unwrap();
 }
 
+async fn next_link() {
+  let focused = FOCUSED_A11Y.get().unwrap().lock().await;
+  if let Some(next_header) = focused.find_role(AtspiRole::Link, false).await.unwrap() {
+    next_header.focus().await;
+  }
+}
+async fn prev_link() {
+  let focused = FOCUSED_A11Y.get().unwrap().lock().await;
+  if let Some(next_header) = focused.find_role(AtspiRole::Link, true).await.unwrap() {
+    next_header.focus().await;
+  }
+}
 async fn next_header() {
-  speak("Next header").await;
+  let focused = FOCUSED_A11Y.get().unwrap().lock().await;
+  if let Some(next_header) = focused.find_role(AtspiRole::Heading, false).await.unwrap() {
+    next_header.focus().await;
+  }
 }
 
 async fn find_in_tree() {
@@ -60,7 +83,10 @@ async fn find_in_tree() {
 }
 
 async fn previous_header() {
-  speak("Previous header").await;
+  let focused = FOCUSED_A11Y.get().unwrap().lock().await;
+  if let Some(prev_header) = focused.find_role(AtspiRole::Heading, true).await.unwrap() {
+    prev_header.focus().await;
+  }
 }
 
 async fn activate_focus_mode() {
@@ -76,6 +102,39 @@ async fn activate_browse_mode() {
 }
 
 async fn nothing(){}
+
+async fn keybind_listener() {
+    let mut rx = create_keybind_channel();
+    println!("WAITING FOR KEYS!");
+    while let Some(kb) = rx.recv().await {
+      println!("KEY PRESSED");
+      // need to do this explicitly for now
+      run_keybind_func(&kb).await;
+    }
+}
+
+async fn event_listener() {
+  let reg = Registry::new().await.expect("Unable to register with a11y registry.");
+  let mmatch = reg.subscribe_all().await.unwrap();
+  let (_mmatch, mut stream) = mmatch.msg_stream();
+  while let Some(msg) = stream.next().await {
+    let sender = msg.sender().unwrap().into_static();
+    let path = msg.path().unwrap().into_static();
+    let acc = Accessible::new(
+      sender,
+      path,
+      Arc::clone(&reg.proxy.connection)
+    );
+    let focused_oc = FOCUSED_A11Y.get();
+    if focused_oc.is_none() {
+        FOCUSED_A11Y.set(Mutex::new(acc.clone()));
+    } else {
+      let mut focused = FOCUSED_A11Y.get().unwrap().lock().await;
+      *focused = acc.clone();
+    }
+    speak(format!("{}, {}", acc.get_readable_text().await.unwrap(), acc.localized_role_name().await.unwrap())).await;
+  }
+}
 
 #[tokio::main]
 async fn main() -> Result<(), dbus::Error> {
@@ -100,6 +159,8 @@ async fn main() -> Result<(), dbus::Error> {
     add_keybind("h".parse().unwrap(), next_header).await;
     add_keybind(find_in_tree_kb, find_in_tree).await;
     add_keybind("Shift+h".parse().unwrap(), previous_header).await;
+    add_keybind("k".parse().unwrap(), next_link).await;
+    add_keybind("Shift+k".parse().unwrap(), prev_link).await;
     add_keybind("Odilia+b".parse().unwrap(), activate_browse_mode).await;
     add_keybind("Odilia+a".parse().unwrap(), activate_focus_mode).await;
 
@@ -108,11 +169,10 @@ async fn main() -> Result<(), dbus::Error> {
     TTS.set(Mutex::new(Speaker::new("odilia").unwrap())).unwrap();
     speak_non_interrupt("welcome to odilia!").await;
 
-    let mut rx = create_keybind_channel();
-    while let Some(kb) = rx.recv().await {
-      // need to do this explicitly for now
-      run_keybind_func(&kb).await;
-    }
+    tokio::spawn(keybind_listener());
+    tokio::spawn(event_listener());
+    //futures::future::join_all(handles).await;
+
     // get key event listeners set up
     /*
     if let Err(error) = grab_async(keystroke_handler).await {
