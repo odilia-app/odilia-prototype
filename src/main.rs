@@ -16,7 +16,7 @@ fn main() {
         eprintln!("Error initialising libatspi: {}", e);
         std::process::exit(1);
     }
-    TTS.set(Mutex::new(Speaker::new("yggdrasil").unwrap()));
+    TTS.set(Mutex::new(Speaker::new("yggdrasil").unwrap())).unwrap();
     let listener = EventListener::new(|e| {
         let source = e.source().unwrap();
         speak(&handle_component(source));
