@@ -52,7 +52,7 @@ dependencies = [
 [[package]]
 name = "atspi-codegen"
 version = "0.1.0"
-source = "git+https://github.com/yggdrasil-sr/atspi-codegen#24ffa64a72a960aba61f7a018c61d36de09c628d"
+source = "git+https://github.com/yggdrasil-sr/atspi-codegen.git#24ffa64a72a960aba61f7a018c61d36de09c628d"
 dependencies = [
  "dbus",
  "dbus-codegen",

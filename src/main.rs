@@ -5,16 +5,26 @@ use odilia_input::{
   keybinds::{
     add_keybind,
     run_keybind_func,
-    get_sr_mode,
+//    get_sr_mode,
     set_sr_mode,
   },
 };
 use odilia_common::{
-  input::{KeyBinding,KeyEvent,Modifiers,Key},
+  input::{
+  KeyBinding,
+//  KeyEvent,
+  Modifiers,
+  Key},
   modes::ScreenReaderMode,
 };
-use std::{sync::Arc, sync::Mutex as SyncMutex, time::Duration, collections::HashMap, future::Future};
-use rdev::{Event as RDevEvent, EventType};
+use std::{
+sync::Arc,
+sync::Mutex as SyncMutex,
+time::Duration,
+//collections::HashMap,
+//future::Future
+};
+//use rdev::{Event as RDevEvent, EventType};
 
 use atspi::{
   Accessible,
@@ -24,20 +34,31 @@ use atspi::{
 
 use dbus::{
     channel::Channel,
-    message::{MatchRule, SignalArgs},
-    nonblock::{stdintf::org_freedesktop_dbus::Properties, MethodReply, Proxy, SyncConnection},
+    message::{
+    MatchRule,
+    SignalArgs
+    },
+    nonblock::{
+    //stdintf::org_freedesktop_dbus::Properties,
+    //MethodReply,
+    Proxy,
+    SyncConnection
+    },
 };
 use futures::stream::StreamExt;
 use once_cell::sync::OnceCell;
 use tokio::sync::{
   Mutex,
-  mpsc::Receiver
+//  mpsc::Receiver
 };
 
 use atspi_codegen::event::OrgA11yAtspiEventObjectStateChanged as StateChanged;
 use atspi_codegen::event::OrgA11yAtspiEventObjectTextCaretMoved as CaretMoved;
-use atspi_codegen::device_event_controller::OrgA11yAtspiDeviceEventController;
-use tts_subsystem::{Priority, Speaker};
+//use atspi_codegen::device_event_controller::OrgA11yAtspiDeviceEventController;
+use tts_subsystem::{
+Priority,
+Speaker
+};
 
 const TIMEOUT: Duration = Duration::from_secs(1);
 
@@ -62,19 +83,19 @@ async fn speak_non_interrupt(text: impl AsRef<str>) {
 async fn next_link() {
   let focused = FOCUSED_A11Y.get().unwrap().lock().await;
   if let Some(next_header) = focused.find_role(AtspiRole::Link, false).await.unwrap() {
-    next_header.focus().await;
+    next_header.focus().await.unwrap();
   }
 }
 async fn prev_link() {
   let focused = FOCUSED_A11Y.get().unwrap().lock().await;
   if let Some(next_header) = focused.find_role(AtspiRole::Link, true).await.unwrap() {
-    next_header.focus().await;
+    next_header.focus().await.unwrap();
   }
 }
 async fn next_header() {
   let focused = FOCUSED_A11Y.get().unwrap().lock().await;
   if let Some(next_header) = focused.find_role(AtspiRole::Heading, false).await.unwrap() {
-    next_header.focus().await;
+    next_header.focus().await.unwrap();
   }
 }
 
@@ -85,7 +106,7 @@ async fn find_in_tree() {
 async fn previous_header() {
   let focused = FOCUSED_A11Y.get().unwrap().lock().await;
   if let Some(prev_header) = focused.find_role(AtspiRole::Heading, true).await.unwrap() {
-    prev_header.focus().await;
+    prev_header.focus().await.unwrap();
   }
 }
 
@@ -101,7 +122,9 @@ async fn activate_browse_mode() {
   speak("Browse Mode").await;
 }
 
-async fn nothing(){}
+async fn nothing(){
+;
+}
 
 async fn keybind_listener() {
     let mut rx = create_keybind_channel();
@@ -128,6 +151,7 @@ async fn event_listener() {
     let focused_oc = FOCUSED_A11Y.get();
     if focused_oc.is_none() {
         FOCUSED_A11Y.set(Mutex::new(acc.clone()));
+
     } else {
       let mut focused = FOCUSED_A11Y.get().unwrap().lock().await;
       *focused = acc.clone();
@@ -203,7 +227,7 @@ async fn main() -> Result<(), dbus::Error> {
         )
         .await?;
 
-    let matching = Proxy::new(
+    let _matching = Proxy::new(
         "org.a11y.atspi.DeviceEventController",
         "/org/a11y/atspi/listeners/0",
         TIMEOUT,
@@ -211,21 +235,21 @@ async fn main() -> Result<(), dbus::Error> {
     );
     // Listen for those events
     let mr = MatchRule::new_signal(StateChanged::INTERFACE, StateChanged::NAME);
-    let mr2 = MatchRule::new_signal(CaretMoved::INTERFACE, CaretMoved::NAME);
-    let mr3 = MatchRule::new_signal("org.a11y.atspi.DeviceEventController", "NotifyListenersSync");
+//    let mr2 = MatchRule::new_signal(CaretMoved::INTERFACE, CaretMoved::NAME);
+//    let mr3 = MatchRule::new_signal("org.a11y.atspi.DeviceEventController", "NotifyListenersSync");
     //let mr3 = mr3.with_path("/org/a11y/atspi/listeners/0");
     // msgmatch must be bound, else we get no events!
-    let (_msgmatch, mut stream) = conn.add_match(mr2).await?.msg_stream();
+    let (_msgmatch, mut stream) = conn.add_match(mr).await?.msg_stream();
 
     while let Some(msg) = stream.next().await {
         let mut iter = msg.iter_init();
-        println!("{:?}", iter);
+//        println!("{:?}", iter);
         let acc = Accessible::new(
           msg.sender().unwrap(),
           msg.path().unwrap(),
           Arc::clone(&conn)
         );
-        let event_type: String = iter.get().unwrap();
+//        let event_type: String = iter.get().unwrap();
         let name = acc.name().await.unwrap();
         let role = acc.localized_role_name().await.unwrap();
         //let sender = msg.sender().unwrap().clone();
@@ -279,7 +303,7 @@ async fn main() -> Result<(), dbus::Error> {
         let place = tokio::try_join!(place_fut);
         println!("{:?}", place);
         */
-        println!("{}, {}", name, role);
+        //println!("{}, {}", name, role);
         let text = format!("{}, {}", name, role);
         tokio::task::spawn(speak(text));
     }
