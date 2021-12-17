@@ -58,6 +58,15 @@ lazy_static! {
   static ref ACTIVE_MODE: Arc<SyncMutex<ScreenReaderMode>> = Arc::new(SyncMutex::new(ScreenReaderMode::new("CommandMode")));
 }
 
+async fn stop_speech(){
+    TTS
+    .get()
+    .unwrap()
+    .lock()
+    .await
+    .stop()
+    .unwrap();
+}
 async fn speak(text: impl AsRef<str>) {
     let temp = TTS.get().unwrap().lock().await;
     temp.cancel().unwrap();
@@ -169,7 +178,17 @@ async fn main() -> Result<(), dbus::Error> {
         mode: None,
         notify: false,
     };
-    let find_in_tree_kb = KeyBinding {
+//trap the ctrl key, to always stop speech
+let stop_speech_key = KeyBinding {
+    key: None,
+    mods: Modifiers::CONTROL,
+    repeat: 1,
+    consume: true,
+    mode: None,
+    notify: false,
+};
+    
+let find_in_tree_kb = KeyBinding {
         key: Some(Key::Other('f')),
         mods: Modifiers::ODILIA,
         repeat: 1,
@@ -177,6 +196,7 @@ async fn main() -> Result<(), dbus::Error> {
         mode: Some(ScreenReaderMode::new("BrowseMode")),
         notify: true,
     };
+    add_keybind(stop_speech_key, stop_speech).await;
     add_keybind(ocap, nothing).await;
     add_keybind("h".parse().unwrap(), next_header).await;
     add_keybind(find_in_tree_kb, find_in_tree).await;
