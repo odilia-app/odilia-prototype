@@ -1,64 +1,52 @@
 #[macro_use]
 extern crate lazy_static;
-use odilia_input::{
-  events::create_keybind_channel,
-  keybinds::{
-    add_keybind,
-    run_keybind_func,
-//    get_sr_mode,
-    set_sr_mode,
-  },
-};
 use odilia_common::{
-  input::{
-  KeyBinding,
-//  KeyEvent,
-  Modifiers,
-  Key},
-  modes::ScreenReaderMode,
+    input::{
+        Key,
+        KeyBinding,
+        //  KeyEvent,
+        Modifiers,
+    },
+    modes::ScreenReaderMode,
+};
+use odilia_input::{
+    events::create_keybind_channel,
+    keybinds::{
+        add_keybind,
+        run_keybind_func,
+        //    get_sr_mode,
+        set_sr_mode,
+    },
 };
 use std::{
-sync::Arc,
-sync::Mutex as SyncMutex,
-time::Duration,
-//collections::HashMap,
-//future::Future
+    sync::Arc,
+    sync::Mutex as SyncMutex,
+    time::Duration,
+    //collections::HashMap,
+    //future::Future
 };
 //use rdev::{Event as RDevEvent, EventType};
 
-use atspi::{
-  Accessible,
-  Registry,
-  enums::AtspiRole,
-};
+use atspi::{enums::AtspiRole, Accessible, Registry};
 
 use dbus::{
     channel::Channel,
-    message::{
-    MatchRule,
-    SignalArgs
-    },
+    message::{MatchRule, SignalArgs},
     nonblock::{
-    //stdintf::org_freedesktop_dbus::Properties,
-    //MethodReply,
-    Proxy,
-    SyncConnection
+        //stdintf::org_freedesktop_dbus::Properties,
+        //MethodReply,
+        Proxy,
+        SyncConnection,
     },
 };
 use futures::stream::StreamExt;
 use once_cell::sync::OnceCell;
-use tokio::sync::{
-  Mutex,
-//  mpsc::Receiver
-};
+use tokio::sync::Mutex;
 
 use atspi_codegen::event::OrgA11yAtspiEventObjectStateChanged as StateChanged;
 use atspi_codegen::event::OrgA11yAtspiEventObjectTextCaretMoved as CaretMoved;
 //use atspi_codegen::device_event_controller::OrgA11yAtspiDeviceEventController;
-use tts_subsystem::{
-Priority,
-Speaker
-};
+use tts_subsystem::{Priority, Speaker};
 
 const TIMEOUT: Duration = Duration::from_secs(1);
 
@@ -77,87 +65,97 @@ async fn speak(text: impl AsRef<str>) {
 }
 
 async fn speak_non_interrupt(text: impl AsRef<str>) {
-    TTS.get().unwrap().lock().await.speak(Priority::Important, text.as_ref()).unwrap();
+    TTS.get()
+        .unwrap()
+        .lock()
+        .await
+        .speak(Priority::Important, text.as_ref())
+        .unwrap();
 }
 
 async fn next_link() {
-  let focused = FOCUSED_A11Y.get().unwrap().lock().await;
-  if let Some(next_header) = focused.find_role(AtspiRole::Link, false).await.unwrap() {
-    next_header.focus().await.unwrap();
-  }
+    let focused = FOCUSED_A11Y.get().unwrap().lock().await;
+    if let Some(next_header) = focused.find_role(AtspiRole::Link, false).await.unwrap() {
+        next_header.focus().await.unwrap();
+    }
 }
 async fn prev_link() {
-  let focused = FOCUSED_A11Y.get().unwrap().lock().await;
-  if let Some(next_header) = focused.find_role(AtspiRole::Link, true).await.unwrap() {
-    next_header.focus().await.unwrap();
-  }
+    let focused = FOCUSED_A11Y.get().unwrap().lock().await;
+    if let Some(next_header) = focused.find_role(AtspiRole::Link, true).await.unwrap() {
+        next_header.focus().await.unwrap();
+    }
 }
 async fn next_header() {
-  let focused = FOCUSED_A11Y.get().unwrap().lock().await;
-  if let Some(next_header) = focused.find_role(AtspiRole::Heading, false).await.unwrap() {
-    next_header.focus().await.unwrap();
-  }
+    let focused = FOCUSED_A11Y.get().unwrap().lock().await;
+    if let Some(next_header) = focused.find_role(AtspiRole::Heading, false).await.unwrap() {
+        next_header.focus().await.unwrap();
+    }
 }
 
 async fn find_in_tree() {
-  speak("Find in tree").await;
+    speak("Find in tree").await;
 }
 
 async fn previous_header() {
-  let focused = FOCUSED_A11Y.get().unwrap().lock().await;
-  if let Some(prev_header) = focused.find_role(AtspiRole::Heading, true).await.unwrap() {
-    prev_header.focus().await.unwrap();
-  }
+    let focused = FOCUSED_A11Y.get().unwrap().lock().await;
+    if let Some(prev_header) = focused.find_role(AtspiRole::Heading, true).await.unwrap() {
+        prev_header.focus().await.unwrap();
+    }
 }
 
 async fn activate_focus_mode() {
-  let fm = ScreenReaderMode::new("FocusMode");
-  set_sr_mode(fm).await;
-  speak("Focus mode").await;
+    let fm = ScreenReaderMode::new("FocusMode");
+    set_sr_mode(fm).await;
+    speak("Focus mode").await;
 }
 
 async fn activate_browse_mode() {
-  let bm = ScreenReaderMode::new("BrowseMode");
-  set_sr_mode(bm).await;
-  speak("Browse Mode").await;
+    let bm = ScreenReaderMode::new("BrowseMode");
+    set_sr_mode(bm).await;
+    speak("Browse Mode").await;
 }
 #[inline(always)]
-async fn nothing(){
-assert!(true);
+async fn nothing() {
+    assert!(true);
 }
 
 async fn keybind_listener() {
     let mut rx = create_keybind_channel();
     println!("WAITING FOR KEYS!");
     while let Some(kb) = rx.recv().await {
-      println!("KEY PRESSED");
-      // need to do this explicitly for now
-      run_keybind_func(&kb).await;
+        println!("KEY PRESSED");
+        // need to do this explicitly for now
+        run_keybind_func(&kb).await;
     }
 }
 
 async fn event_listener() {
-  let reg = Registry::new().await.expect("Unable to register with a11y registry.");
-  let mmatch = reg.subscribe_all().await.unwrap();
-  let (_mmatch, mut stream) = mmatch.msg_stream();
-  while let Some(msg) = stream.next().await {
-    let sender = msg.sender().unwrap().into_static();
-    let path = msg.path().unwrap().into_static();
-    let acc = Accessible::new(
-      sender,
-      path,
-      Arc::clone(&reg.proxy.connection)
-    );
-    let focused_oc = FOCUSED_A11Y.get();
-    if focused_oc.is_none() {
-        FOCUSED_A11Y.set(Mutex::new(acc.clone()));
-
-    } else {
-      let mut focused = FOCUSED_A11Y.get().unwrap().lock().await;
-      *focused = acc.clone();
+    let reg = Registry::new()
+        .await
+        .expect("Unable to register with a11y registry.");
+    let mmatch = reg.subscribe_all().await.unwrap();
+    let (_mmatch, mut stream) = mmatch.msg_stream();
+    while let Some(msg) = stream.next().await {
+        let sender = msg.sender().unwrap().into_static();
+        let path = msg.path().unwrap().into_static();
+        let acc = Accessible::new(
+            sender.clone(),
+            path.clone(),
+            Arc::clone(&reg.proxy.connection),
+        );
+        let focused_oc = FOCUSED_A11Y.get();
+        if focused_oc.is_none() {
+            FOCUSED_A11Y.set(Mutex::new(acc.clone()));
+        } else {
+            let mut focused = FOCUSED_A11Y.get().unwrap().lock().await;
+            *focused = acc.clone();
+        }
+        let name = acc.get_text().await;
+        let role = acc.localized_role_name().await;
+        if name.is_ok() && role.is_ok() {
+            speak(format!("{}, {}", name.unwrap(), role.unwrap())).await;
+        }
     }
-    speak(format!("{}, {}", acc.get_readable_text().await.unwrap(), acc.localized_role_name().await.unwrap())).await;
-  }
 }
 
 #[tokio::main]
@@ -190,7 +188,8 @@ async fn main() -> Result<(), dbus::Error> {
 
     println!("STARTING ODILIA!");
     //I am trying to fix this by making TTS not be lazily initialised
-    TTS.set(Mutex::new(Speaker::new("odilia").unwrap())).unwrap();
+    TTS.set(Mutex::new(Speaker::new("odilia").unwrap()))
+        .unwrap();
     speak_non_interrupt("welcome to odilia!").await;
 
     tokio::spawn(keybind_listener());
@@ -217,13 +216,13 @@ async fn main() -> Result<(), dbus::Error> {
         TIMEOUT,
         Arc::clone(&conn),
     );
-    
- // Tell at-spi we're interested in focus events
+
+    // Tell at-spi we're interested in focus events
     registry
         .method_call(
             "org.a11y.atspi.Registry",
             "RegisterEvent",
-            ("Object:TextCaretMoved\0",)
+            ("Object:TextCaretMoved\0",),
         )
         .await?;
 
@@ -235,78 +234,78 @@ async fn main() -> Result<(), dbus::Error> {
     );
     // Listen for those events
     let mr = MatchRule::new_signal(StateChanged::INTERFACE, StateChanged::NAME);
-//    let mr2 = MatchRule::new_signal(CaretMoved::INTERFACE, CaretMoved::NAME);
-//    let mr3 = MatchRule::new_signal("org.a11y.atspi.DeviceEventController", "NotifyListenersSync");
+    //    let mr2 = MatchRule::new_signal(CaretMoved::INTERFACE, CaretMoved::NAME);
+    //    let mr3 = MatchRule::new_signal("org.a11y.atspi.DeviceEventController", "NotifyListenersSync");
     //let mr3 = mr3.with_path("/org/a11y/atspi/listeners/0");
     // msgmatch must be bound, else we get no events!
     let (_msgmatch, mut stream) = conn.add_match(mr).await?.msg_stream();
 
     while let Some(msg) = stream.next().await {
         let mut iter = msg.iter_init();
-//        println!("{:?}", iter);
+        //        println!("{:?}", iter);
         let acc = Accessible::new(
-          msg.sender().unwrap(),
-          msg.path().unwrap(),
-          Arc::clone(&conn)
-        );
-//        let event_type: String = iter.get().unwrap();
-        let name = acc.name().await.unwrap();
-        let role = acc.localized_role_name().await.unwrap();
-        //let sender = msg.sender().unwrap().clone();
-        //let path = msg.path().unwrap().clone();
-        /*
-        println!("{:?}", msg);
-        /*
-        if event_type != "focused" {
-            continue;
-        }
-        iter.next(); // Done retrieving this String
-        let gained_focus = iter.get::<i32>().unwrap() == 1;
-        if !gained_focus {
-            continue;
-        }*/
-
-        // Construct a proxy to the newly focused DBus object
-        // I think the only time these unwraps would panic is if we were constructing a
-        // message, and it wasn't fully constructed yet, so this *should* be fine
-  */
-        /*
-        let name_fut: MethodReply<String> = accessible.get("org.a11y.atspi.Accessible", "Name");
-        let chr_cnt_fut: MethodReply<i32> = accessible.get("org.a11y.atspi.Text", "CharacterCount");
-        let role_fut: MethodReply<(String,)> =
-            accessible.method_call("org.a11y.atspi.Accessible", "GetLocalizedRoleName", ());
-        let attrs_fut: MethodReply<(HashMap<String,String>,)> =
-            accessible.method_call("org.a11y.atspi.Accessible", "GetAttributes", ());
-        let children_fut: MethodReply<((String, dbus::Path<'static>),)> =
-            accessible.method_call("org.a11y.atspi.Accessible", "GetChildAtIndex", (0,));
-        let chr_cnt = tokio::try_join!(chr_cnt_fut);
-        let children = tokio::try_join!(children_fut).unwrap().0.0;
-        let text_fut: MethodReply<(String,)> =
-            accessible.method_call("org.a11y.atspi.Text", "GetText", (0, chr_cnt.unwrap().0));
-        let index_in_fut: MethodReply<(i32,)> = accessible.method_call("org.a11y.atspi.Accessible", "GetIndexInParent", ());
-        let (name, (role,), (attrs,), (text,), (index_in,)) = tokio::try_join!(name_fut, role_fut, attrs_fut, text_fut, index_in_fut)?;
-        */
-        let attrs = acc.attrs().await;
-        println!("{:?}", attrs);
-        //println!("<{0}>{1}</{0}>", attrs.get("tag").unwrap(), text);
-        /*
-        let accessible2 = Proxy::new(
             msg.sender().unwrap(),
-            & children.1,
-            TIMEOUT,
+            msg.path().unwrap(),
             Arc::clone(&conn),
         );
-        println!("INDEX: {:?}", index_in);
-        println!("{:?}", children);
-        
-        let place_fut: MethodReply<(i32,)> = accessible2.method_call("org.a11y.atspi.Accessible", "GetIndexInParent", ());
-        let place = tokio::try_join!(place_fut);
-        println!("{:?}", place);
-        */
-        //println!("{}, {}", name, role);
-        let text = format!("{}, {}", name, role);
-        tokio::task::spawn(speak(text));
+        //        let event_type: String = iter.get().unwrap();
+        let name = acc.name().await;
+        let role = acc.localized_role_name().await;
+        if (name.is_ok()) && role.is_ok() {
+            let text = format!("{}, {}", name.unwrap(), role.unwrap());
+            tokio::task::spawn(speak(text));
+        }
     }
+    //let sender = msg.sender().unwrap().clone();
+    //let path = msg.path().unwrap().clone();
+    /*
+          println!("{:?}", msg);
+          /*
+          if event_type != "focused" {
+              continue;
+          }
+          iter.next(); // Done retrieving this String
+          let gained_focus = iter.get::<i32>().unwrap() == 1;
+          if !gained_focus {
+              continue;
+          }*/
+
+          // Construct a proxy to the newly focused DBus object
+          // I think the only time these unwraps would panic is if we were constructing a
+          // message, and it wasn't fully constructed yet, so this *should* be fine
+    */
+    /*
+    let name_fut: MethodReply<String> = accessible.get("org.a11y.atspi.Accessible", "Name");
+    let chr_cnt_fut: MethodReply<i32> = accessible.get("org.a11y.atspi.Text", "CharacterCount");
+    let role_fut: MethodReply<(String,)> =
+        accessible.method_call("org.a11y.atspi.Accessible", "GetLocalizedRoleName", ());
+    let attrs_fut: MethodReply<(HashMap<String,String>,)> =
+        accessible.method_call("org.a11y.atspi.Accessible", "GetAttributes", ());
+    let children_fut: MethodReply<((String, dbus::Path<'static>),)> =
+        accessible.method_call("org.a11y.atspi.Accessible", "GetChildAtIndex", (0,));
+    let chr_cnt = tokio::try_join!(chr_cnt_fut);
+    let children = tokio::try_join!(children_fut).unwrap().0.0;
+    let text_fut: MethodReply<(String,)> =
+        accessible.method_call("org.a11y.atspi.Text", "GetText", (0, chr_cnt.unwrap().0));
+    let index_in_fut: MethodReply<(i32,)> = accessible.method_call("org.a11y.atspi.Accessible", "GetIndexInParent", ());
+    let (name, (role,), (attrs,), (text,), (index_in,)) = tokio::try_join!(name_fut, role_fut, attrs_fut, text_fut, index_in_fut)?;
+    */
+    /*
+    let accessible2 = Proxy::new(
+        msg.sender().unwrap(),
+        & children.1,
+        TIMEOUT,
+        Arc::clone(&conn),
+    );
+    println!("INDEX: {:?}", index_in);
+    println!("{:?}", children);
+
+    let place_fut: MethodReply<(i32,)> = accessible2.method_call("org.a11y.atspi.Accessible", "GetIndexInParent", ());
+    let place = tokio::try_join!(place_fut);
+    println!("{:?}", place);
+    */
+    //println!("{}, {}", name, role);
+
     Ok(())
 }
 
