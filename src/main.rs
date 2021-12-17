@@ -121,9 +121,9 @@ async fn activate_browse_mode() {
   set_sr_mode(bm).await;
   speak("Browse Mode").await;
 }
-
+#[inline(always)]
 async fn nothing(){
-;
+assert!(true);
 }
 
 async fn keybind_listener() {
