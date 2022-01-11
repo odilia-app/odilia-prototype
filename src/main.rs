@@ -180,7 +180,7 @@ async fn main() -> Result<(), dbus::Error> {
     };
 //trap the ctrl key, to always stop speech
 let stop_speech_key = KeyBinding {
-    key: None,
+    key: Some(Key::Other('g')),
     mods: Modifiers::CONTROL,
     repeat: 1,
     consume: true,
@@ -212,8 +212,9 @@ let find_in_tree_kb = KeyBinding {
         .unwrap();
     speak_non_interrupt("welcome to odilia!").await;
 
-    tokio::spawn(keybind_listener());
-    tokio::spawn(event_listener());
+    let h1 = tokio::spawn(keybind_listener());
+    let h2 = tokio::spawn(event_listener());
+    tokio::join!(h1, h2);
     Ok(())
 }
 
