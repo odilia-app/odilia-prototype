@@ -180,12 +180,12 @@ async fn main() -> Result<(), dbus::Error> {
     };
 //trap the ctrl key, to always stop speech
 let stop_speech_key = KeyBinding {
-    key: Some(Key::Other('g')),
+    key: None,
     mods: Modifiers::CONTROL,
     repeat: 1,
-    consume: true,
+    consume: false,
     mode: None,
-    notify: false,
+    notify: true,
 };
     
 let find_in_tree_kb = KeyBinding {
