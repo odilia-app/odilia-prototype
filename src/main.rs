@@ -4,7 +4,6 @@ use odilia_common::{
     input::{
         Key,
         KeyBinding,
-        //  KeyEvent,
         Modifiers,
     },
     modes::ScreenReaderMode,
@@ -14,7 +13,6 @@ use odilia_input::{
     keybinds::{
         add_keybind,
         run_keybind_func,
-        //    get_sr_mode,
         set_sr_mode,
     },
 };
@@ -22,7 +20,6 @@ use std::{
     sync::Arc,
     sync::Mutex as SyncMutex,
 };
-//use rdev::{Event as RDevEvent, EventType};
 
 use atspi::{enums::AtspiRole, Accessible, Registry};
 
