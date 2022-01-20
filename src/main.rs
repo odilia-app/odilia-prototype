@@ -21,34 +21,16 @@ use odilia_input::{
 use std::{
     sync::Arc,
     sync::Mutex as SyncMutex,
-    time::Duration,
-    //collections::HashMap,
-    //future::Future
 };
 //use rdev::{Event as RDevEvent, EventType};
 
 use atspi::{enums::AtspiRole, Accessible, Registry};
 
-use dbus::{
-    channel::Channel,
-    message::{MatchRule, SignalArgs},
-    nonblock::{
-        //stdintf::org_freedesktop_dbus::Properties,
-        //MethodReply,
-        Proxy,
-        SyncConnection,
-    },
-};
 use futures::stream::StreamExt;
 use once_cell::sync::OnceCell;
 use tokio::sync::Mutex;
 
-use atspi_codegen::event::OrgA11yAtspiEventObjectStateChanged as StateChanged;
-use atspi_codegen::event::OrgA11yAtspiEventObjectTextCaretMoved as CaretMoved;
-//use atspi_codegen::device_event_controller::OrgA11yAtspiDeviceEventController;
 use tts_subsystem::{Priority, Speaker};
-
-const TIMEOUT: Duration = Duration::from_secs(1);
 
 //initialise a global tts object
 static TTS: OnceCell<Mutex<Speaker>> = OnceCell::new();
@@ -154,7 +136,7 @@ async fn event_listener() {
         );
         let focused_oc = FOCUSED_A11Y.get();
         if focused_oc.is_none() {
-            FOCUSED_A11Y.set(Mutex::new(acc.clone()));
+            let _ans = FOCUSED_A11Y.set(Mutex::new(acc.clone()));
         } else {
             let mut focused = FOCUSED_A11Y.get().unwrap().lock().await;
             *focused = acc.clone();
@@ -214,40 +196,6 @@ let find_in_tree_kb = KeyBinding {
 
     let h1 = tokio::spawn(keybind_listener());
     let h2 = tokio::spawn(event_listener());
-    tokio::join!(h1, h2);
+    let _res = tokio::join!(h1, h2);
     Ok(())
-}
-
-/// Opens a connection to the session bus, grabs the address of the a11y bus, and disconnects from
-/// the session bus.
-async fn a11y_bus_address() -> Result<String, dbus::Error> {
-    let (io_res, conn) = dbus_tokio::connection::new_session_sync()?;
-    // Run this in the background
-    let io_res = tokio::task::spawn(async move {
-        let err = io_res.await;
-        // Todo: Make this fail gracefully
-        panic!("Lost connection to DBus: {}", err);
-    });
-
-    let proxy = Proxy::new("org.a11y.Bus", "/org/a11y/bus", TIMEOUT, conn);
-    let (address,) = proxy.method_call("org.a11y.Bus", "GetAddress", ()).await?;
-
-    io_res.abort(); // Disconnect from session bus
-    Ok(address)
-}
-
-/// Connect to the a11y bus.
-async fn open_a11y_bus() -> Result<(tokio::task::JoinHandle<()>, Arc<SyncConnection>), dbus::Error>
-{
-    let addr = a11y_bus_address().await?;
-    let mut channel = Channel::open_private(&addr)?;
-    channel.register()?;
-    let (io_res, conn) = dbus_tokio::connection::from_channel(channel)?;
-    // Run this in the background
-    let jh = tokio::task::spawn(async move {
-        let error = io_res.await;
-        // Todo: Make this fail gracefully
-        panic!("Lost connection to DBus: {}", error);
-    });
-    Ok((jh, conn))
 }
