@@ -29,32 +29,29 @@ use tokio::sync::Mutex;
 
 use tts_subsystem::{Priority, Speaker};
 
-//initialise a global tts object
-static TTS: OnceCell<Mutex<Speaker>> = OnceCell::new();
-static FOCUSED_A11Y: OnceCell<Mutex<Accessible>> = OnceCell::new();
-lazy_static! {
-// TODO: static set init
-  static ref ACTIVE_MODE: Arc<SyncMutex<ScreenReaderMode>> = Arc::new(SyncMutex::new(ScreenReaderMode::new("CommandMode")));
-}
+pub mod state;
+use crate::state::ScreenReaderState;
+
+static STATE: OnceCell<ScreenReaderState<'static>> = OnceCell::new();
 
 async fn stop_speech(){
-    TTS
+    STATE
     .get()
     .unwrap()
+    .speaker
     .lock()
     .await
     .stop()
     .unwrap();
 }
 async fn speak(text: impl AsRef<str>) {
-    let temp = TTS.get().unwrap().lock().await;
+    let mut temp = STATE.get().unwrap().speaker.lock().await;
     temp.cancel().unwrap();
     temp.speak(Priority::Message, text.as_ref()).unwrap();
 }
 
 async fn speak_non_interrupt(text: impl AsRef<str>) {
-    TTS.get()
-        .unwrap()
+    STATE.get().unwrap().speaker
         .lock()
         .await
         .speak(Priority::Important, text.as_ref())
@@ -107,7 +104,7 @@ async fn nothing() {
     assert!(true);
 }
 
-async fn keybind_listener() {
+async fn keybind_listener(state: &ScreenReaderState<'static>) {
     let mut rx = create_keybind_channel();
     println!("WAITING FOR KEYS!");
     while let Some(kb) = rx.recv().await {
@@ -117,7 +114,7 @@ async fn keybind_listener() {
     }
 }
 
-async fn event_listener() {
+async fn event_listener(state: &ScreenReaderState<'static>) {
     let reg = Registry::new()
         .await
         .expect("Unable to register with a11y registry.");
@@ -131,12 +128,8 @@ async fn event_listener() {
             path.clone(),
             Arc::clone(&reg.proxy.connection),
         );
-        let focused_oc = FOCUSED_A11Y.get();
-        if focused_oc.is_none() {
-            let _ans = FOCUSED_A11Y.set(Mutex::new(acc.clone()));
-        } else {
-            let mut focused = FOCUSED_A11Y.get().unwrap().lock().await;
-            *focused = acc.clone();
+        if let mut focused_oc = state.focus.lock().await {
+          *focused_oc = Some(acc.clone());
         }
         let name = acc.get_text().await;
         let role = acc.localized_role_name().await;
@@ -146,8 +139,21 @@ async fn event_listener() {
     }
 }
 
+/// Setup initial state.
+async fn init_state() {
+    let state = ScreenReaderState {
+        mode: Mutex::new(ScreenReaderMode::new("BrowseMode")),
+        focus: Mutex::new(None),
+        speaker: Mutex::new(Speaker::new("odilia").unwrap()),
+    };
+    let _res1 = STATE.set(state);
+}
+
 #[tokio::main]
 async fn main() -> Result<(), dbus::Error> {
+    init_state().await;
+    //I am trying to fix this by making TTS not be lazily initialised
+    speak_non_interrupt("welcome to odilia!").await;
     // always consume caps lock
     let ocap = KeyBinding {
         key: None,
@@ -186,13 +192,10 @@ let find_in_tree_kb = KeyBinding {
     add_keybind("Odilia+a".parse().unwrap(), activate_focus_mode).await;
 
     println!("STARTING ODILIA!");
-    //I am trying to fix this by making TTS not be lazily initialised
-    TTS.set(Mutex::new(Speaker::new("odilia").unwrap()))
-        .unwrap();
-    speak_non_interrupt("welcome to odilia!").await;
 
-    let h1 = tokio::spawn(keybind_listener());
-    let h2 = tokio::spawn(event_listener());
+    let state = STATE.get().unwrap();
+    let h1 = tokio::spawn(keybind_listener(state));
+    let h2 = tokio::spawn(event_listener(state));
     let _res = tokio::join!(h1, h2);
     Ok(())
 }
