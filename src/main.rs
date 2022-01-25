@@ -7,18 +7,20 @@ use odilia_common::{
         Modifiers,
     },
     modes::ScreenReaderMode,
+    events::ScreenReaderEventType,
+    elements::ElementType,
 };
-use odilia_input::{
-    events::create_keybind_channel,
-    keybinds::{
-        add_keybind,
-        run_keybind_func,
-        set_sr_mode,
-    },
+mod keybinds;
+use crate::keybinds::{
+    add_keybind,
+    set_sr_mode,
 };
+mod events;
+use crate::events::create_keybind_channel;
 use std::{
     sync::Arc,
     sync::Mutex as SyncMutex,
+    collections::HashMap,
 };
 
 use atspi::{enums::AtspiRole, Accessible, Registry};
@@ -29,10 +31,14 @@ use tokio::sync::Mutex;
 
 use tts_subsystem::{Priority, Speaker};
 
-pub mod state;
-use crate::state::ScreenReaderState;
+mod state;
+use crate::state::{
+  ScreenReaderState,
+  ScreenReaderEventMap,
+};
 
 static STATE: OnceCell<ScreenReaderState<'static>> = OnceCell::new();
+static EV_MAP: OnceCell<ScreenReaderEventMap> = OnceCell::new();
 
 async fn stop_speech(){
     STATE
@@ -45,7 +51,7 @@ async fn stop_speech(){
     .unwrap();
 }
 async fn speak(text: impl AsRef<str>) {
-    let mut temp = STATE.get().unwrap().speaker.lock().await;
+    let temp = STATE.get().unwrap().speaker.lock().await;
     temp.cancel().unwrap();
     temp.speak(Priority::Message, text.as_ref()).unwrap();
 }
@@ -58,47 +64,16 @@ async fn speak_non_interrupt(text: impl AsRef<str>) {
         .unwrap();
 }
 
-async fn next_link() {
-    let focused = FOCUSED_A11Y.get().unwrap().lock().await;
-    if let Some(next_header) = focused.find_role(AtspiRole::Link, false).await.unwrap() {
-        next_header.focus().await.unwrap();
-    }
-}
-async fn prev_link() {
-    let focused = FOCUSED_A11Y.get().unwrap().lock().await;
-    if let Some(next_header) = focused.find_role(AtspiRole::Link, true).await.unwrap() {
-        next_header.focus().await.unwrap();
-    }
-}
-async fn next_header() {
-    let focused = FOCUSED_A11Y.get().unwrap().lock().await;
-    if let Some(next_header) = focused.find_role(AtspiRole::Heading, false).await.unwrap() {
-        next_header.focus().await.unwrap();
+async fn find_a11y_element(role: AtspiRole, reverse: bool) {
+    let focused = STATE.get().unwrap().focus.lock().await;
+    if focused.is_some() {
+      if let Some(prev_header) = focused.as_ref().expect("Something very bad happened").find_role(role, reverse).await.unwrap() {
+          prev_header.focus().await.unwrap();
+      }
+    } else {
     }
 }
 
-async fn find_in_tree() {
-    speak("Find in tree").await;
-}
-
-async fn previous_header() {
-    let focused = FOCUSED_A11Y.get().unwrap().lock().await;
-    if let Some(prev_header) = focused.find_role(AtspiRole::Heading, true).await.unwrap() {
-        prev_header.focus().await.unwrap();
-    }
-}
-
-async fn activate_focus_mode() {
-    let fm = ScreenReaderMode::new("FocusMode");
-    set_sr_mode(fm).await;
-    speak("Focus mode").await;
-}
-
-async fn activate_browse_mode() {
-    let bm = ScreenReaderMode::new("BrowseMode");
-    set_sr_mode(bm).await;
-    speak("Browse Mode").await;
-}
 #[inline(always)]
 async fn nothing() {
     assert!(true);
@@ -106,11 +81,10 @@ async fn nothing() {
 
 async fn keybind_listener(state: &ScreenReaderState<'static>) {
     let mut rx = create_keybind_channel();
-    println!("WAITING FOR KEYS!");
     while let Some(kb) = rx.recv().await {
-        println!("KEY PRESSED");
-        // need to do this explicitly for now
-        run_keybind_func(&kb).await;
+        
+        // TODO use event system
+        //run_keybind_func(&kb).await;
     }
 }
 
@@ -145,8 +119,11 @@ async fn init_state() {
         mode: Mutex::new(ScreenReaderMode::new("BrowseMode")),
         focus: Mutex::new(None),
         speaker: Mutex::new(Speaker::new("odilia").unwrap()),
+        //etf_map: HashMap::new(),
     };
     let _res1 = STATE.set(state);
+    let map = HashMap::new();
+    let _res2 = EV_MAP.set(map);
 }
 
 #[tokio::main]
@@ -181,15 +158,16 @@ let find_in_tree_kb = KeyBinding {
         mode: Some(ScreenReaderMode::new("BrowseMode")),
         notify: true,
     };
-    add_keybind(stop_speech_key, stop_speech).await;
-    add_keybind(ocap, nothing).await;
-    add_keybind("h".parse().unwrap(), next_header).await;
-    add_keybind(find_in_tree_kb, find_in_tree).await;
-    add_keybind("Shift+h".parse().unwrap(), previous_header).await;
-    add_keybind("k".parse().unwrap(), next_link).await;
-    add_keybind("Shift+k".parse().unwrap(), prev_link).await;
-    add_keybind("Odilia+b".parse().unwrap(), activate_browse_mode).await;
-    add_keybind("Odilia+a".parse().unwrap(), activate_focus_mode).await;
+    //add_keybind(stop_speech_key, ...).await;
+    //add_keybind(ocap, nothing).await;
+    let next_header_evt = ScreenReaderEventType::Next(ElementType::Heading);
+    add_keybind("h".parse().unwrap(), next_header_evt).await;
+    add_keybind("Shift+h".parse().unwrap(), ScreenReaderEventType::Previous(ElementType::Heading)).await;
+    add_keybind("k".parse().unwrap(), ScreenReaderEventType::Next(ElementType::Link)).await;
+    add_keybind("Shift+k".parse().unwrap(), ScreenReaderEventType::Previous(ElementType::Link)).await;
+    add_keybind("Odilia+b".parse().unwrap(), ScreenReaderEventType::ChangeMode(ScreenReaderMode::new("BrowseMode"))).await;
+    add_keybind("Odilia+a".parse().unwrap(), ScreenReaderEventType::ChangeMode(ScreenReaderMode::new("FocusMode"))).await;
+    //add_keybind(find_in_tree_kb, ...).await;
 
     println!("STARTING ODILIA!");
 

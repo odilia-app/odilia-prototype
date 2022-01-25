@@ -669,7 +669,6 @@ dependencies = [
 [[package]]
 name = "odilia-input"
 version = "0.1.0"
-source = "git+https://github.com/yggdrasil-sr/odilia-input#62364aa7ae22a696f32e699588deb435b685cde7"
 dependencies = [
  "lazy_static",
  "odilia-common",

@@ -1,12 +1,15 @@
-use odilia_common::modes::ScreenReaderMode;
-use dbus::nonblock::{
-  Proxy,
-  SyncConnection,
+use odilia_common::{
+  modes::ScreenReaderMode,
+  events::ScreenReaderEventType,
 };
 use tokio::sync::Mutex;
 use tts_subsystem::Speaker;
-use std::sync::Arc;
 use atspi::accessible::Accessible;
+use std::{
+    collections::HashMap,
+    future::Future,
+};
+
 
 /// ScreenReaderState stores all information related to global state in the screen reader.
 pub struct ScreenReaderState<'a> {
@@ -17,3 +20,6 @@ pub struct ScreenReaderState<'a> {
     /// speaker: a speaker mutex which can be unlocked by any required green (tokio) threads
     pub speaker: Mutex<Speaker>,
 }
+
+pub type AsyncFn = Box<dyn Future<Output=()> + Unpin + Send + 'static>;
+pub type ScreenReaderEventMap = HashMap<ScreenReaderEventType, AsyncFn>;
