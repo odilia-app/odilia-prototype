@@ -4,141 +4,91 @@ use odilia_common::{
     input::{
         Key,
         KeyBinding,
-        //  KeyEvent,
         Modifiers,
     },
     modes::ScreenReaderMode,
+    events::ScreenReaderEventType,
+    elements::ElementType,
 };
-use odilia_input::{
-    events::create_keybind_channel,
-    keybinds::{
-        add_keybind,
-        run_keybind_func,
-        //    get_sr_mode,
-        set_sr_mode,
-    },
+mod keybinds;
+use crate::keybinds::{
+    add_keybind,
+    set_sr_mode,
 };
+mod events;
+use crate::events::create_keybind_channel;
 use std::{
     sync::Arc,
     sync::Mutex as SyncMutex,
-    time::Duration,
-    //collections::HashMap,
-    //future::Future
+    collections::HashMap,
 };
-//use rdev::{Event as RDevEvent, EventType};
 
 use atspi::{enums::AtspiRole, Accessible, Registry};
 
-use dbus::{
-    channel::Channel,
-    message::{MatchRule, SignalArgs},
-    nonblock::{
-        //stdintf::org_freedesktop_dbus::Properties,
-        //MethodReply,
-        Proxy,
-        SyncConnection,
-    },
-};
 use futures::stream::StreamExt;
 use once_cell::sync::OnceCell;
 use tokio::sync::Mutex;
 
-use atspi_codegen::event::OrgA11yAtspiEventObjectStateChanged as StateChanged;
-use atspi_codegen::event::OrgA11yAtspiEventObjectTextCaretMoved as CaretMoved;
-//use atspi_codegen::device_event_controller::OrgA11yAtspiDeviceEventController;
 use tts_subsystem::{Priority, Speaker};
 
-const TIMEOUT: Duration = Duration::from_secs(1);
+mod state;
+use crate::state::{
+  ScreenReaderState,
+  ScreenReaderEventMap,
+};
 
-//initialise a global tts object
-static TTS: OnceCell<Mutex<Speaker>> = OnceCell::new();
-static FOCUSED_A11Y: OnceCell<Mutex<Accessible>> = OnceCell::new();
-lazy_static! {
-// TODO: static set init
-  static ref ACTIVE_MODE: Arc<SyncMutex<ScreenReaderMode>> = Arc::new(SyncMutex::new(ScreenReaderMode::new("CommandMode")));
-}
+static STATE: OnceCell<ScreenReaderState<'static>> = OnceCell::new();
+static EV_MAP: OnceCell<ScreenReaderEventMap> = OnceCell::new();
 
 async fn stop_speech(){
-    TTS
+    STATE
     .get()
     .unwrap()
+    .speaker
     .lock()
     .await
     .stop()
     .unwrap();
 }
 async fn speak(text: impl AsRef<str>) {
-    let temp = TTS.get().unwrap().lock().await;
+    let temp = STATE.get().unwrap().speaker.lock().await;
     temp.cancel().unwrap();
     temp.speak(Priority::Message, text.as_ref()).unwrap();
 }
 
 async fn speak_non_interrupt(text: impl AsRef<str>) {
-    TTS.get()
-        .unwrap()
+    STATE.get().unwrap().speaker
         .lock()
         .await
         .speak(Priority::Important, text.as_ref())
         .unwrap();
 }
 
-async fn next_link() {
-    let focused = FOCUSED_A11Y.get().unwrap().lock().await;
-    if let Some(next_header) = focused.find_role(AtspiRole::Link, false).await.unwrap() {
-        next_header.focus().await.unwrap();
-    }
-}
-async fn prev_link() {
-    let focused = FOCUSED_A11Y.get().unwrap().lock().await;
-    if let Some(next_header) = focused.find_role(AtspiRole::Link, true).await.unwrap() {
-        next_header.focus().await.unwrap();
-    }
-}
-async fn next_header() {
-    let focused = FOCUSED_A11Y.get().unwrap().lock().await;
-    if let Some(next_header) = focused.find_role(AtspiRole::Heading, false).await.unwrap() {
-        next_header.focus().await.unwrap();
+async fn find_a11y_element(role: AtspiRole, reverse: bool) {
+    let focused = STATE.get().unwrap().focus.lock().await;
+    if focused.is_some() {
+      if let Some(prev_header) = focused.as_ref().expect("Something very bad happened").find_role(role, reverse).await.unwrap() {
+          prev_header.focus().await.unwrap();
+      }
+    } else {
     }
 }
 
-async fn find_in_tree() {
-    speak("Find in tree").await;
-}
-
-async fn previous_header() {
-    let focused = FOCUSED_A11Y.get().unwrap().lock().await;
-    if let Some(prev_header) = focused.find_role(AtspiRole::Heading, true).await.unwrap() {
-        prev_header.focus().await.unwrap();
-    }
-}
-
-async fn activate_focus_mode() {
-    let fm = ScreenReaderMode::new("FocusMode");
-    set_sr_mode(fm).await;
-    speak("Focus mode").await;
-}
-
-async fn activate_browse_mode() {
-    let bm = ScreenReaderMode::new("BrowseMode");
-    set_sr_mode(bm).await;
-    speak("Browse Mode").await;
-}
 #[inline(always)]
 async fn nothing() {
     assert!(true);
 }
 
-async fn keybind_listener() {
+async fn keybind_listener(state: &ScreenReaderState<'static>) {
     let mut rx = create_keybind_channel();
-    println!("WAITING FOR KEYS!");
     while let Some(kb) = rx.recv().await {
-        println!("KEY PRESSED");
-        // need to do this explicitly for now
-        run_keybind_func(&kb).await;
+        
+        // TODO use event system
+        //run_keybind_func(&kb).await;
     }
 }
 
-async fn event_listener() {
+async fn event_listener(state: &ScreenReaderState<'static>) {
     let reg = Registry::new()
         .await
         .expect("Unable to register with a11y registry.");
@@ -152,12 +102,8 @@ async fn event_listener() {
             path.clone(),
             Arc::clone(&reg.proxy.connection),
         );
-        let focused_oc = FOCUSED_A11Y.get();
-        if focused_oc.is_none() {
-            FOCUSED_A11Y.set(Mutex::new(acc.clone()));
-        } else {
-            let mut focused = FOCUSED_A11Y.get().unwrap().lock().await;
-            *focused = acc.clone();
+        if let mut focused_oc = state.focus.lock().await {
+          *focused_oc = Some(acc.clone());
         }
         let name = acc.get_text().await;
         let role = acc.localized_role_name().await;
@@ -167,8 +113,24 @@ async fn event_listener() {
     }
 }
 
+/// Setup initial state.
+async fn init_state() {
+    let state = ScreenReaderState {
+        mode: Mutex::new(ScreenReaderMode::new("BrowseMode")),
+        focus: Mutex::new(None),
+        speaker: Mutex::new(Speaker::new("odilia").unwrap()),
+        //etf_map: HashMap::new(),
+    };
+    let _res1 = STATE.set(state);
+    let map = HashMap::new();
+    let _res2 = EV_MAP.set(map);
+}
+
 #[tokio::main]
 async fn main() -> Result<(), dbus::Error> {
+    init_state().await;
+    //I am trying to fix this by making TTS not be lazily initialised
+    speak_non_interrupt("welcome to odilia!").await;
     // always consume caps lock
     let ocap = KeyBinding {
         key: None,
@@ -180,12 +142,12 @@ async fn main() -> Result<(), dbus::Error> {
     };
 //trap the ctrl key, to always stop speech
 let stop_speech_key = KeyBinding {
-    key: Some(Key::Other('g')),
+    key: None,
     mods: Modifiers::CONTROL,
     repeat: 1,
-    consume: true,
+    consume: false,
     mode: None,
-    notify: false,
+    notify: true,
 };
     
 let find_in_tree_kb = KeyBinding {
@@ -196,58 +158,22 @@ let find_in_tree_kb = KeyBinding {
         mode: Some(ScreenReaderMode::new("BrowseMode")),
         notify: true,
     };
-    add_keybind(stop_speech_key, stop_speech).await;
-    add_keybind(ocap, nothing).await;
-    add_keybind("h".parse().unwrap(), next_header).await;
-    add_keybind(find_in_tree_kb, find_in_tree).await;
-    add_keybind("Shift+h".parse().unwrap(), previous_header).await;
-    add_keybind("k".parse().unwrap(), next_link).await;
-    add_keybind("Shift+k".parse().unwrap(), prev_link).await;
-    add_keybind("Odilia+b".parse().unwrap(), activate_browse_mode).await;
-    add_keybind("Odilia+a".parse().unwrap(), activate_focus_mode).await;
+    //add_keybind(stop_speech_key, ...).await;
+    //add_keybind(ocap, nothing).await;
+    let next_header_evt = ScreenReaderEventType::Next(ElementType::Heading);
+    add_keybind("h".parse().unwrap(), next_header_evt).await;
+    add_keybind("Shift+h".parse().unwrap(), ScreenReaderEventType::Previous(ElementType::Heading)).await;
+    add_keybind("k".parse().unwrap(), ScreenReaderEventType::Next(ElementType::Link)).await;
+    add_keybind("Shift+k".parse().unwrap(), ScreenReaderEventType::Previous(ElementType::Link)).await;
+    add_keybind("Odilia+b".parse().unwrap(), ScreenReaderEventType::ChangeMode(ScreenReaderMode::new("BrowseMode"))).await;
+    add_keybind("Odilia+a".parse().unwrap(), ScreenReaderEventType::ChangeMode(ScreenReaderMode::new("FocusMode"))).await;
+    //add_keybind(find_in_tree_kb, ...).await;
 
     println!("STARTING ODILIA!");
-    //I am trying to fix this by making TTS not be lazily initialised
-    TTS.set(Mutex::new(Speaker::new("odilia").unwrap()))
-        .unwrap();
-    speak_non_interrupt("welcome to odilia!").await;
 
-    let h1 = tokio::spawn(keybind_listener());
-    let h2 = tokio::spawn(event_listener());
-    tokio::join!(h1, h2);
+    let state = STATE.get().unwrap();
+    let h1 = tokio::spawn(keybind_listener(state));
+    let h2 = tokio::spawn(event_listener(state));
+    let _res = tokio::join!(h1, h2);
     Ok(())
-}
-
-/// Opens a connection to the session bus, grabs the address of the a11y bus, and disconnects from
-/// the session bus.
-async fn a11y_bus_address() -> Result<String, dbus::Error> {
-    let (io_res, conn) = dbus_tokio::connection::new_session_sync()?;
-    // Run this in the background
-    let io_res = tokio::task::spawn(async move {
-        let err = io_res.await;
-        // Todo: Make this fail gracefully
-        panic!("Lost connection to DBus: {}", err);
-    });
-
-    let proxy = Proxy::new("org.a11y.Bus", "/org/a11y/bus", TIMEOUT, conn);
-    let (address,) = proxy.method_call("org.a11y.Bus", "GetAddress", ()).await?;
-
-    io_res.abort(); // Disconnect from session bus
-    Ok(address)
-}
-
-/// Connect to the a11y bus.
-async fn open_a11y_bus() -> Result<(tokio::task::JoinHandle<()>, Arc<SyncConnection>), dbus::Error>
-{
-    let addr = a11y_bus_address().await?;
-    let mut channel = Channel::open_private(&addr)?;
-    channel.register()?;
-    let (io_res, conn) = dbus_tokio::connection::from_channel(channel)?;
-    // Run this in the background
-    let jh = tokio::task::spawn(async move {
-        let error = io_res.await;
-        // Todo: Make this fail gracefully
-        panic!("Lost connection to DBus: {}", error);
-    });
-    Ok((jh, conn))
 }
