@@ -2,7 +2,7 @@ use odilia_common::{
   modes::ScreenReaderMode,
   events::ScreenReaderEventType,
 };
-use tokio::sync::Mutex;
+use std::sync::Mutex;
 use tts_subsystem::Speaker;
 use atspi::accessible::Accessible;
 use std::{
@@ -21,5 +21,5 @@ pub struct ScreenReaderState<'a> {
     pub speaker: Mutex<Speaker>,
 }
 
-pub type AsyncFn = Box<dyn Future<Output=()> + Unpin + Send + 'static>;
+pub type AsyncFn = Box<dyn Fn() -> Box<dyn Future<Output=()> + Unpin + Send + 'static> + Send + Sync + 'static>;
 pub type ScreenReaderEventMap = HashMap<ScreenReaderEventType, AsyncFn>;

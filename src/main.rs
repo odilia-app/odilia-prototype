@@ -13,13 +13,12 @@ use odilia_common::{
 mod keybinds;
 use crate::keybinds::{
     add_keybind,
-    set_sr_mode,
 };
 mod events;
 use crate::events::create_keybind_channel;
 use std::{
     sync::Arc,
-    sync::Mutex as SyncMutex,
+    sync::Mutex,
     collections::HashMap,
 };
 
@@ -27,7 +26,6 @@ use atspi::{enums::AtspiRole, Accessible, Registry};
 
 use futures::stream::StreamExt;
 use once_cell::sync::OnceCell;
-use tokio::sync::Mutex;
 
 use tts_subsystem::{Priority, Speaker};
 
@@ -39,19 +37,21 @@ use crate::state::{
 
 static STATE: OnceCell<ScreenReaderState<'static>> = OnceCell::new();
 static EV_MAP: OnceCell<ScreenReaderEventMap> = OnceCell::new();
+static KEY_MAP: OnceCell<HashMap<KeyBinding, ScreenReaderEventType>> = OnceCell::new();
 
 async fn stop_speech(){
+    println!("STOP SPEECH");
     STATE
     .get()
     .unwrap()
     .speaker
     .lock()
-    .await
+    .expect("Could not lock speaker.")
     .stop()
     .unwrap();
 }
 async fn speak(text: impl AsRef<str>) {
-    let temp = STATE.get().unwrap().speaker.lock().await;
+    let temp = STATE.get().unwrap().speaker.lock().expect("Unable to lock the speaker.");
     temp.cancel().unwrap();
     temp.speak(Priority::Message, text.as_ref()).unwrap();
 }
@@ -59,18 +59,19 @@ async fn speak(text: impl AsRef<str>) {
 async fn speak_non_interrupt(text: impl AsRef<str>) {
     STATE.get().unwrap().speaker
         .lock()
-        .await
+        .expect("Unable to lock the speaker")
         .speak(Priority::Important, text.as_ref())
         .unwrap();
 }
 
 async fn find_a11y_element(role: AtspiRole, reverse: bool) {
-    let focused = STATE.get().unwrap().focus.lock().await;
+    let focused = STATE.get().unwrap().focus.lock().expect("Cannot lock the STATE.focus mutes");
     if focused.is_some() {
-      if let Some(prev_header) = focused.as_ref().expect("Something very bad happened").find_role(role, reverse).await.unwrap() {
+      if let Some(prev_header) = focused.as_ref().expect("This will never happen.").find_role(role, reverse).await.unwrap() {
           prev_header.focus().await.unwrap();
       }
     } else {
+      speak("Not found").await;
     }
 }
 
@@ -79,16 +80,23 @@ async fn nothing() {
     assert!(true);
 }
 
-async fn keybind_listener(state: &ScreenReaderState<'static>) {
-    let mut rx = create_keybind_channel();
+async fn run_event_func(sret: &ScreenReaderEventType) {
+  let map = EV_MAP.get().expect("Could not get EV_MAP");
+  let func = map.get(sret).expect("Cannot find screen reader event type requested.");
+  func().await;
+}
+
+async fn keybind_listener(state: &'static ScreenReaderState<'static>) {
+    // this means that a keybinding CANNOT be added later, it must be setup once and used forever.
+    let kbdngs: Vec<KeyBinding> = EV_MAP.get().unwrap().keys().collect();
+    let mut rx = create_keybind_channel(state, &kbdngs);
     while let Some(kb) = rx.recv().await {
-        
-        // TODO use event system
-        //run_keybind_func(&kb).await;
+        println!("KB: {:?}", kb);
+        //tx.send().await;
     }
 }
 
-async fn event_listener(state: &ScreenReaderState<'static>) {
+async fn event_listener(state: &'static ScreenReaderState<'static>) {
     let reg = Registry::new()
         .await
         .expect("Unable to register with a11y registry.");
@@ -102,7 +110,7 @@ async fn event_listener(state: &ScreenReaderState<'static>) {
             path.clone(),
             Arc::clone(&reg.proxy.connection),
         );
-        if let mut focused_oc = state.focus.lock().await {
+        if let mut focused_oc = state.focus.lock().expect("Could not lock focus.") {
           *focused_oc = Some(acc.clone());
         }
         let name = acc.get_text().await;
@@ -124,6 +132,8 @@ async fn init_state() {
     let _res1 = STATE.set(state);
     let map = HashMap::new();
     let _res2 = EV_MAP.set(map);
+    let map2 = HashMap::new();
+    let _res2 = KEY_MAP.set(map2);
 }
 
 #[tokio::main]
@@ -170,7 +180,6 @@ let find_in_tree_kb = KeyBinding {
     //add_keybind(find_in_tree_kb, ...).await;
 
     println!("STARTING ODILIA!");
-
     let state = STATE.get().unwrap();
     let h1 = tokio::spawn(keybind_listener(state));
     let h2 = tokio::spawn(event_listener(state));

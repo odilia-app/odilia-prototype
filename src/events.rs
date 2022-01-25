@@ -1,3 +1,7 @@
+use crate::state::{
+  ScreenReaderState,
+  ScreenReaderEventMap,
+};
 use crate::keybinds::{
   keyevent_match_sync,
 };
@@ -199,7 +203,7 @@ const MAX_EVENTS: usize = 256;
 /// also whether we are notified about it via the channel.
 /// # Panics
 /// * If called more than once in the same program.
-pub fn create_keybind_channel() -> mpsc::Receiver<KeyBinding>
+pub fn create_keybind_channel(state: &'static ScreenReaderState, kbdng: &Vec<KeyBinding>) -> mpsc::Receiver<KeyBinding>
 where
 {
     // Create the channel for communication between the input monitoring thread and async tasks
@@ -222,7 +226,7 @@ where
 
             // Decide what to do with this `Event`
             let o_event = rdev_event_to_odilia_event(&current_keys);
-            let keybind: Option<KeyBinding> = keyevent_match_sync(&o_event);
+            let keybind: Option<KeyBinding> = keyevent_match_sync(&o_event, state, kbdng);
             /* if a matching keybinding is not found, pass through the event */
             if keybind.is_none() {
               return Some(ev);
