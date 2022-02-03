@@ -1,185 +1,188 @@
-use atspi::accessible::AccessibleExt;
-use atspi::events::*;
-use atspi::Role;
+#[macro_use]
+extern crate lazy_static;
+use odilia_common::{
+    input::{
+        Key,
+        KeyBinding,
+        Modifiers,
+    },
+    modes::ScreenReaderMode,
+    events::ScreenReaderEventType,
+    elements::ElementType,
+};
+mod keybinds;
+use crate::keybinds::{
+    add_keybind,
+};
+mod events;
+use crate::events::create_keybind_channel;
+use std::{
+    sync::Arc,
+    sync::Mutex,
+    collections::HashMap,
+};
+
+use atspi::{enums::AtspiRole, Accessible, Registry};
+
+use futures::stream::StreamExt;
 use once_cell::sync::OnceCell;
-use std::sync::Mutex;
-use tts_subsystem::Priority;
-use tts_subsystem::Speaker;
-fn speak(text: &str) {
-    let temp = TTS.get().unwrap().lock().unwrap();
+
+use tts_subsystem::{Priority, Speaker};
+
+mod state;
+use crate::state::{
+  ScreenReaderState,
+  ScreenReaderEventMap,
+};
+
+static STATE: OnceCell<ScreenReaderState<'static>> = OnceCell::new();
+static EV_MAP: OnceCell<ScreenReaderEventMap> = OnceCell::new();
+static KEY_MAP: OnceCell<HashMap<KeyBinding, ScreenReaderEventType>> = OnceCell::new();
+
+async fn stop_speech(){
+    println!("STOP SPEECH");
+    STATE
+    .get()
+    .unwrap()
+    .speaker
+    .lock()
+    .expect("Could not lock speaker.")
+    .stop()
+    .unwrap();
+}
+async fn speak(text: impl AsRef<str>) {
+    let temp = STATE.get().unwrap().speaker.lock().expect("Unable to lock the speaker.");
     temp.cancel().unwrap();
-    temp.speak(Priority::Important, text).unwrap();
+    temp.speak(Priority::Message, text.as_ref()).unwrap();
 }
-static TTS: OnceCell<Mutex<Speaker>> = OnceCell::new();
-fn main() {
-    if let Err(e) = atspi::init() {
-        eprintln!("Error initialising libatspi: {}", e);
-        std::process::exit(1);
+
+async fn speak_non_interrupt(text: impl AsRef<str>) {
+    STATE.get().unwrap().speaker
+        .lock()
+        .expect("Unable to lock the speaker")
+        .speak(Priority::Important, text.as_ref())
+        .unwrap();
+}
+
+async fn find_a11y_element(role: AtspiRole, reverse: bool) {
+    let focused = STATE.get().unwrap().focus.lock().expect("Cannot lock the STATE.focus mutes");
+    if focused.is_some() {
+      if let Some(prev_header) = focused.as_ref().expect("This will never happen.").find_role(role, reverse).await.unwrap() {
+          prev_header.focus().await.unwrap();
+      }
+    } else {
+      speak("Not found").await;
     }
-    TTS.set(Mutex::new(Speaker::new("yggdrasil").unwrap())).unwrap();
-    let listener = EventListener::new(|e| {
-        let source = e.source().unwrap();
-        speak(&handle_component(source));
-    });
-    listener.register("object:state-changed:focused").unwrap();
-    Event::main();
-    atspi::exit();
 }
 
-fn handle_component(source: atspi::prelude::Accessible) -> String {
-    let name = source.name();
-    let text = source.text();
+#[inline(always)]
+async fn nothing() {
+    assert!(true);
+}
 
-    let role = source.role().unwrap();
-    let spoken_control = {
-        if name.is_err() && text.is_none() {
-            "unlabeled".to_owned()
-        } else if name.is_err() {
-            text.unwrap().to_string()
-        } else if text.is_none() {
-            name.unwrap().to_string()
-        } else {
-            format!("{}, {}", name.unwrap(), text.unwrap())
+async fn run_event_func(sret: &ScreenReaderEventType) {
+  let map = EV_MAP.get().expect("Could not get EV_MAP");
+  let func = map.get(sret).expect("Cannot find screen reader event type requested.");
+  func().await;
+}
+
+async fn keybind_listener(state: &'static ScreenReaderState<'static>) {
+    // this means that a keybinding CANNOT be added later, it must be setup once and used forever.
+    let kbdngs: Vec<KeyBinding> = EV_MAP.get().unwrap().keys().collect();
+    let mut rx = create_keybind_channel(state, &kbdngs);
+    while let Some(kb) = rx.recv().await {
+        println!("KB: {:?}", kb);
+        //tx.send().await;
+    }
+}
+
+async fn event_listener(state: &'static ScreenReaderState<'static>) {
+    let reg = Registry::new()
+        .await
+        .expect("Unable to register with a11y registry.");
+    let mmatch = reg.subscribe_all().await.unwrap();
+    let (_mmatch, mut stream) = mmatch.msg_stream();
+    while let Some(msg) = stream.next().await {
+        let sender = msg.sender().unwrap().into_static();
+        let path = msg.path().unwrap().into_static();
+        let acc = Accessible::new(
+            sender.clone(),
+            path.clone(),
+            Arc::clone(&reg.proxy.connection),
+        );
+        if let mut focused_oc = state.focus.lock().expect("Could not lock focus.") {
+          *focused_oc = Some(acc.clone());
         }
-    };
-
-    let spoken_role = handle_component_kind(role);
-    format!("{}: {}", spoken_control, spoken_role)
+        let name = acc.get_text().await;
+        let role = acc.localized_role_name().await;
+        if name.is_ok() && role.is_ok() {
+            speak(format!("{}, {}", name.unwrap(), role.unwrap())).await;
+        }
+    }
 }
 
-fn handle_component_kind(role: Role) -> &'static str {
-    match role {
-        Role::Invalid => "invalid component",
-        Role::AcceleratorLabel => "accelerator",
-        Role::Alert => "alert",
-        Role::Animation => "animation",
-        Role::Arrow => "arrow",
-        Role::Calendar => "calendar controll",
-        Role::Canvas => "canvas",
-        Role::CheckBox => "checkbox",
-        Role::CheckMenuItem => "check menu item",
-        Role::ColorChooser => "color picker",
-        Role::ColumnHeader => "column header",
-        Role::ComboBox => "combo box",
-        Role::DateEditor => "date picker",
-        Role::DesktopIcon => "desktop icon",
-        Role::DesktopFrame => "desktop",
-        Role::Dial => "dialer",
-        Role::Dialog => "dialog",
-        Role::DirectoryPane => "directory panel",
-        Role::DrawingArea => "drawing zone",
-        Role::FileChooser => "file picker",
-        Role::Filler => "filler",
-        Role::FocusTraversable => "focus traversable",
-        Role::FontChooser => "font picker",
-        Role::Frame => "frame",
-        Role::GlassPane => "transparent pannel",
-        Role::HtmlContainer => "html container",
-        Role::Icon => "icon",
-        Role::Image => "grafic",
-        Role::InternalFrame => "internal frame",
-        Role::Label => "static text",
-        Role::LayeredPane => "layered layout",
-        Role::List => "list",
-        Role::ListItem => "list item",
-        Role::Menu => "menu",
-        Role::MenuBar => "menu bar",
-        Role::MenuItem => "menu item",
-        Role::OptionPane => "option selector",
-        Role::PageTab => "tab control",
-        Role::PageTabList => "tab list",
-        Role::Panel => "panel layout",
-        Role::PasswordText => "secure text box",
-        Role::PopupMenu => "popup",
-        Role::ProgressBar => "progress bar",
-        Role::PushButton => "button",
-        Role::RadioButton => "radio button",
-        Role::RadioMenuItem => "radio menu item",
-        Role::RootPane => "root container",
-        Role::RowHeader => "row header",
-        Role::ScrollBar => "scroll widget",
-        Role::ScrollPane => "scrollable panel",
-        Role::Separator => "separator",
-        Role::Slider => "slider",
-        Role::SpinButton => "spinner",
-        Role::SplitPane => "split panel",
-        Role::StatusBar => "status bar",
-        Role::Table => "table",
-        Role::TableCell => "table cel",
-        Role::TableColumnHeader => "column header",
-        Role::TableRowHeader => "row header",
-        Role::TearoffMenuItem => "tare off menu item",
-        Role::Terminal => "terminal",
-        Role::Text => "text area",
-        Role::ToggleButton => "toggle",
-        Role::ToolBar => "tool bar",
-        Role::ToolTip => "tool tip",
-        Role::Tree => "treeview",
-        Role::TreeTable => "tree table",
-        Role::Unknown => "unknown",
-        Role::Viewport => "view",
-        Role::Window => "window",
-        Role::Extended => "extended",
-        Role::Header => "header",
-        Role::Footer => "footer",
-        Role::Paragraph => "paragraph",
-        Role::Ruler => "ruler",
-        Role::Application => "application",
-        Role::Autocomplete => "autocomplete",
-        Role::Editbar => "edit bar",
-        Role::Embedded => "embedded object",
-        Role::Entry => "edit box",
-        Role::Chart => "chart",
-        Role::Caption => "caption",
-        Role::DocumentFrame => "document container",
-        Role::Heading => "title",
-        Role::Page => "page",
-        Role::Section => "section",
-        Role::RedundantObject => "",
-        Role::Form => "form control",
-        Role::Link => "link",
-        Role::InputMethodWindow => "input method dialog",
-        Role::TableRow => "row",
-        Role::TreeItem => "treeview item",
-        Role::DocumentSpreadsheet => "spreadsheet",
-        Role::DocumentPresentation => "presentation",
-        Role::DocumentText => "text",
-        Role::DocumentWeb => "webview component",
-        Role::DocumentEmail => "email",
-        Role::Comment => "comment",
-        Role::ListBox => "list box",
-        Role::Grouping => "group",
-        Role::ImageMap => "image map",
-        Role::Notification => "notification",
-        Role::InfoBar => "info",
-        Role::LevelBar => "level bar",
-        Role::TitleBar => "title",
-        Role::BlockQuote => "block quote",
-        Role::Audio => "audioplayer",
-        Role::Video => "videoplayer",
-        Role::Definition => "definition",
-        Role::Article => "article",
-        Role::Landmark => "landmark",
-        Role::Log => "log",
-        Role::Marquee => "marquee",
-        Role::Math => "math area",
-        Role::Rating => "raiting",
-        Role::Timer => "timer controll",
-        Role::Static => "static",
-        Role::MathFraction => "fraction",
-        Role::MathRoot => "root",
-        Role::Subscript => "subscript",
-        Role::Superscript => "superscript",
-        Role::DescriptionList => "description list",
-        Role::DescriptionTerm => "description term",
-        Role::DescriptionValue => "description value",
-        Role::Footnote => "footnote",
-        Role::ContentDeletion => "deleted",
-        Role::ContentInsertion => "inserted",
-        Role::Mark => "marked content",
-        Role::Suggestion => "suggestion",
-        Role::LastDefined => "last defined",
-        Role::__Unknown(_) => "",
-        _ => "",
-    }
+/// Setup initial state.
+async fn init_state() {
+    let state = ScreenReaderState {
+        mode: Mutex::new(ScreenReaderMode::new("BrowseMode")),
+        focus: Mutex::new(None),
+        speaker: Mutex::new(Speaker::new("odilia").unwrap()),
+        //etf_map: HashMap::new(),
+    };
+    let _res1 = STATE.set(state);
+    let map = HashMap::new();
+    let _res2 = EV_MAP.set(map);
+    let map2 = HashMap::new();
+    let _res2 = KEY_MAP.set(map2);
+}
+
+#[tokio::main]
+async fn main() -> Result<(), dbus::Error> {
+    init_state().await;
+    //I am trying to fix this by making TTS not be lazily initialised
+    speak_non_interrupt("welcome to odilia!").await;
+    // always consume caps lock
+    let ocap = KeyBinding {
+        key: None,
+        mods: Modifiers::ODILIA,
+        repeat: 1,
+        consume: true,
+        mode: None,
+        notify: false,
+    };
+//trap the ctrl key, to always stop speech
+let stop_speech_key = KeyBinding {
+    key: None,
+    mods: Modifiers::CONTROL,
+    repeat: 1,
+    consume: false,
+    mode: None,
+    notify: true,
+};
+    
+let find_in_tree_kb = KeyBinding {
+        key: Some(Key::Other('f')),
+        mods: Modifiers::ODILIA,
+        repeat: 1,
+        consume: true,
+        mode: Some(ScreenReaderMode::new("BrowseMode")),
+        notify: true,
+    };
+    //add_keybind(stop_speech_key, ...).await;
+    //add_keybind(ocap, nothing).await;
+    let next_header_evt = ScreenReaderEventType::Next(ElementType::Heading);
+    add_keybind("h".parse().unwrap(), next_header_evt).await;
+    add_keybind("Shift+h".parse().unwrap(), ScreenReaderEventType::Previous(ElementType::Heading)).await;
+    add_keybind("k".parse().unwrap(), ScreenReaderEventType::Next(ElementType::Link)).await;
+    add_keybind("Shift+k".parse().unwrap(), ScreenReaderEventType::Previous(ElementType::Link)).await;
+    add_keybind("Odilia+b".parse().unwrap(), ScreenReaderEventType::ChangeMode(ScreenReaderMode::new("BrowseMode"))).await;
+    add_keybind("Odilia+a".parse().unwrap(), ScreenReaderEventType::ChangeMode(ScreenReaderMode::new("FocusMode"))).await;
+    //add_keybind(find_in_tree_kb, ...).await;
+
+    println!("STARTING ODILIA!");
+    let state = STATE.get().unwrap();
+    let h1 = tokio::spawn(keybind_listener(state));
+    let h2 = tokio::spawn(event_listener(state));
+    let _res = tokio::join!(h1, h2);
+    Ok(())
 }
