@@ -43,7 +43,7 @@ pub async fn keyevent_match(kbm: &KeyEvent, state: &'static ScreenReaderState<'s
 }
 
 /* this will match with the bitflags */
-pub fn keyevent_match_sync(kbm: &KeyEvent, state: &'static ScreenReaderState<'static>, kbs: Vec<KeyBinding>) -> Option<KeyBinding>
+pub fn keyevent_match_sync(kbm: &KeyEvent, state: &'static ScreenReaderState<'static>, kbs: &Vec<KeyBinding>) -> Option<KeyBinding>
 {
   let sr_mode = state.mode.lock().expect("Could not lock mode");
   for kb in kbs {
