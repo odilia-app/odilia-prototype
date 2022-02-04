@@ -203,11 +203,13 @@ const MAX_EVENTS: usize = 256;
 /// also whether we are notified about it via the channel.
 /// # Panics
 /// * If called more than once in the same program.
-pub fn create_keybind_channel(state: &'static ScreenReaderState, kbdng: &Vec<KeyBinding>) -> mpsc::Receiver<KeyBinding>
+pub fn create_keybind_channel(state: &'static ScreenReaderState, kbdng_orig: &Vec<KeyBinding>) -> mpsc::Receiver<KeyBinding>
 where
 {
     // Create the channel for communication between the input monitoring thread and async tasks
     let (tx, rx) = mpsc::channel(MAX_EVENTS);
+
+    let kbdng = kbdng_orig.clone();
 
     // Spawn a synchronous input monitoring thread
     std::thread::spawn(move || {
@@ -226,24 +228,24 @@ where
 
             // Decide what to do with this `Event`
             let o_event = rdev_event_to_odilia_event(&current_keys);
-            let keybind: Option<KeyBinding> = keyevent_match_sync(&o_event, state, kbdng);
+            let keybind: Option<KeyBinding> = keyevent_match_sync(&o_event, state, &kbdng);
             /* if a matching keybinding is not found, pass through the event */
             if keybind.is_none() {
               return Some(ev);
             }
-            let keybind = keybind.unwrap(); // should never panic due to above if
+            let keybind_safe = keybind.unwrap(); // should never panic due to above if
 
             TX.with(|tx| {
                 let tx = tx.get().unwrap();
 
-                if keybind.notify {
+                if keybind_safe.notify {
                     // Notify us by sending the `Event` down the channel
-                    if let Err(e) = tx.blocking_send(keybind.clone()) {
+                    if let Err(e) = tx.blocking_send(keybind_safe.clone()) {
                         eprintln!("Warning: Failed to process key event: {}", e);
                     }
                 }
                 // Decide whether to consume the action or pass it through
-                if keybind.consume {
+                if keybind_safe.consume {
                     None
                 } else {
                     Some(ev)

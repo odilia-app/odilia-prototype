@@ -11,9 +11,6 @@ use odilia_common::{
     elements::ElementType,
 };
 mod keybinds;
-use crate::keybinds::{
-    add_keybind,
-};
 mod events;
 use crate::events::create_keybind_channel;
 use std::{
@@ -37,7 +34,7 @@ use crate::state::{
 
 static STATE: OnceCell<ScreenReaderState<'static>> = OnceCell::new();
 static EV_MAP: OnceCell<ScreenReaderEventMap> = OnceCell::new();
-static KEY_MAP: OnceCell<HashMap<KeyBinding, ScreenReaderEventType>> = OnceCell::new();
+static KEY_MAP: OnceCell<Mutex<HashMap<KeyBinding, ScreenReaderEventType>>> = OnceCell::new();
 
 async fn stop_speech(){
     println!("STOP SPEECH");
@@ -88,7 +85,7 @@ async fn run_event_func(sret: &ScreenReaderEventType) {
 
 async fn keybind_listener(state: &'static ScreenReaderState<'static>) {
     // this means that a keybinding CANNOT be added later, it must be setup once and used forever.
-    let kbdngs: Vec<KeyBinding> = EV_MAP.get().unwrap().keys().collect();
+    let kbdngs: Vec<KeyBinding> = KEY_MAP.get().expect("Cannot get key map").lock().expect("Cannot lock key map").keys().cloned().collect();
     let mut rx = create_keybind_channel(state, &kbdngs);
     while let Some(kb) = rx.recv().await {
         println!("KB: {:?}", kb);
@@ -132,8 +129,13 @@ async fn init_state() {
     let _res1 = STATE.set(state);
     let map = HashMap::new();
     let _res2 = EV_MAP.set(map);
-    let map2 = HashMap::new();
+    let map2 = Mutex::new(HashMap::new());
     let _res2 = KEY_MAP.set(map2);
+}
+
+async fn add_keybind(kbn: KeyBinding, sret: ScreenReaderEventType) {
+    let mut map = KEY_MAP.get().expect("Cannot get key map").lock().expect("Could not lock key map");
+    map.insert(kbn, sret);
 }
 
 #[tokio::main]
