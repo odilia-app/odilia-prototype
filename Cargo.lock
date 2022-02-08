@@ -34,10 +34,10 @@ dependencies = [
 [[package]]
 name = "atspi"
 version = "0.1.0"
-source = "git+https://github.com/yggdrasil-sr/atspi.git?branch=testing#71ab088a6d763de2817f4d420623ef87fc7ac4a8"
+source = "git+https://github.com/odilia-app/atspi.git?branch=testing#1a6225f185949bc5d4cb3ed1d9b93deac4842d57"
 dependencies = [
  "async-recursion",
- "atspi-codegen",
+ "atspi-codegen 0.1.0 (git+https://github.com/yggdrasil-sr/atspi-codegen.git)",
  "dbus",
  "dbus-tokio",
  "enum-primitive-derive",
@@ -47,6 +47,15 @@ dependencies = [
  "num-traits",
  "thiserror",
  "tokio",
+]
+
+[[package]]
+name = "atspi-codegen"
+version = "0.1.0"
+source = "git+https://github.com/odilia-app/atspi-codegen.git#24ffa64a72a960aba61f7a018c61d36de09c628d"
+dependencies = [
+ "dbus",
+ "dbus-codegen",
 ]
 
 [[package]]
@@ -643,17 +652,29 @@ name = "odilia"
 version = "0.0.2"
 dependencies = [
  "atspi",
- "atspi-codegen",
+ "atspi-codegen 0.1.0 (git+https://github.com/odilia-app/atspi-codegen.git)",
  "dbus",
  "dbus-tokio",
+ "env_logger",
  "futures",
  "lazy_static",
- "odilia-common",
+ "log",
+ "odilia-common 0.1.0 (git+https://github.com/odilia-app/odilia-common)",
  "odilia-input",
  "once_cell",
  "rdev",
  "tokio",
  "tts_subsystem",
+]
+
+[[package]]
+name = "odilia-common"
+version = "0.1.0"
+source = "git+https://github.com/odilia-app/odilia-common#0f9b1ada02c9d4d8032f849946909855f04dffba"
+dependencies = [
+ "bitflags",
+ "smartstring",
+ "thiserror",
 ]
 
 [[package]]
@@ -669,9 +690,10 @@ dependencies = [
 [[package]]
 name = "odilia-input"
 version = "0.1.0"
+source = "git+https://github.com/odilia-app/odilia-input#70c09870426098db436e1815567b511765e7d67a"
 dependencies = [
  "lazy_static",
- "odilia-common",
+ "odilia-common 0.1.0 (git+https://github.com/yggdrasil-sr/odilia-common)",
  "once_cell",
  "rdev",
  "tokio",
@@ -948,7 +970,7 @@ dependencies = [
 [[package]]
 name = "tts_subsystem"
 version = "0.1.0"
-source = "git+https://github.com/yggdrasil-sr/tts_subsystem#169d5d9c7d558d981c41e02fc54c956a9c11e62d"
+source = "git+https://github.com/odilia-app/tts_subsystem#169d5d9c7d558d981c41e02fc54c956a9c11e62d"
 dependencies = [
  "speech-dispatcher-sys",
  "thiserror",
