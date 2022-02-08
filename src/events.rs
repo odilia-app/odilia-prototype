@@ -1,25 +1,13 @@
-use crate::state::{
-  ScreenReaderState,
-  ScreenReaderEventMap,
-};
-use crate::keybinds::{
-  keyevent_match_sync,
-};
+use crate::keybinds::keyevent_match_sync;
+use crate::state::{ScreenReaderEventMap, ScreenReaderState};
 
-use odilia_common::{
-  input::{
-    KeyEvent,
-    KeyBinding,
-    Key,
-    Modifiers,
-  },
-};
+use odilia_common::input::{Key, KeyBinding, KeyEvent, Modifiers};
 use rdev::{
     Event,
     EventType::{KeyPress, KeyRelease},
     Key as RDevKey,
 };
-use tokio::{sync::mpsc};
+use tokio::sync::mpsc;
 
 use once_cell::sync::{Lazy, OnceCell};
 use std::{future::Future, sync::Mutex};
@@ -165,28 +153,32 @@ fn rdev_event_to_odilia_event(events: &Vec<RDevKey>) -> KeyEvent {
     }
 }
 
-fn is_new_key_event(event: &Event, current_keys: &mut Vec<RDevKey>, last_keys: &mut Vec<RDevKey>) -> bool {
-  match event.event_type {
-    KeyPress(x) => {
-      *last_keys = current_keys.clone();
-      current_keys.push(x);
-      current_keys.dedup();
-      // if there is a new key pressed/released and it is not a repeat event
-      if last_keys != current_keys {
-        println!("KEYS: {:?}", current_keys);
-        true
-      } else {
-        false
-      }
-    },
-    KeyRelease(x) => {
-      *last_keys = current_keys.clone();
-      // remove just released key from curent keys
-      current_keys.retain(|&k| k != x);
-      false
-    },
-    _ => false
-  }
+fn is_new_key_event(
+    event: &Event,
+    current_keys: &mut Vec<RDevKey>,
+    last_keys: &mut Vec<RDevKey>,
+) -> bool {
+    match event.event_type {
+        KeyPress(x) => {
+            *last_keys = current_keys.clone();
+            current_keys.push(x);
+            current_keys.dedup();
+            // if there is a new key pressed/released and it is not a repeat event
+            if last_keys != current_keys {
+                println!("KEYS: {:?}", current_keys);
+                true
+            } else {
+                false
+            }
+        }
+        KeyRelease(x) => {
+            *last_keys = current_keys.clone();
+            // remove just released key from curent keys
+            current_keys.retain(|&k| k != x);
+            false
+        }
+        _ => false,
+    }
 }
 
 /// The maximum number of `[rdev::Event`]s that can be in the input queue at one time.
@@ -203,7 +195,10 @@ const MAX_EVENTS: usize = 256;
 /// also whether we are notified about it via the channel.
 /// # Panics
 /// * If called more than once in the same program.
-pub fn create_keybind_channel(state: &'static ScreenReaderState, kbdng_orig: &Vec<KeyBinding>) -> mpsc::Receiver<KeyBinding>
+pub fn create_keybind_channel(
+    state: &'static ScreenReaderState,
+    kbdng_orig: &Vec<KeyBinding>,
+) -> mpsc::Receiver<KeyBinding>
 where
 {
     // Create the channel for communication between the input monitoring thread and async tasks
@@ -220,7 +215,7 @@ where
         rdev::grab(move |ev| {
             let mut current_keys = CURRENT_KEYS.lock().unwrap();
             let mut last_keys = LAST_KEYS.lock().unwrap();
-            
+
             // if the event is not new (i.e. a held key), just passthrough the event
             if !is_new_key_event(&ev, &mut current_keys, &mut last_keys) {
                 return Some(ev);
@@ -231,7 +226,7 @@ where
             let keybind: Option<KeyBinding> = keyevent_match_sync(&o_event, state, &kbdng);
             /* if a matching keybinding is not found, pass through the event */
             if keybind.is_none() {
-              return Some(ev);
+                return Some(ev);
             }
             let keybind_safe = keybind.unwrap(); // should never panic due to above if
 
