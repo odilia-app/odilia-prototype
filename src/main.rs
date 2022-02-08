@@ -11,31 +11,19 @@ mod keybinds;
 use crate::events::create_keybind_channel;
 use std::{collections::HashMap, sync::Arc, sync::Mutex};
 
-use atspi::{enums::AtspiRole, Accessible, Registry};
+use atspi::{Accessible, Registry};
 
-use futures::{stream::StreamExt, TryFutureExt};
+use futures::{stream::StreamExt};
 use once_cell::sync::OnceCell;
 
 use tts_subsystem::{Priority, Speaker};
 
 mod state;
 use crate::state::{ScreenReaderEventMap, ScreenReaderState};
-use log::{debug, error, info, log_enabled, Level};
+use log::{debug, info};
 static STATE: OnceCell<ScreenReaderState<'static>> = OnceCell::new();
 static EV_MAP: OnceCell<ScreenReaderEventMap> = OnceCell::new();
 static KEY_MAP: OnceCell<Mutex<HashMap<KeyBinding, ScreenReaderEventType>>> = OnceCell::new();
-
-async fn stop_speech() {
-    debug!("STOP SPEECH");
-    STATE
-        .get()
-        .unwrap()
-        .speaker
-        .lock()
-        .expect("Could not lock speaker.")
-        .stop()
-        .unwrap();
-}
 async fn speak(text: impl AsRef<str>) {
     let temp = STATE
         .get()
@@ -57,42 +45,6 @@ async fn speak_non_interrupt(text: impl AsRef<str>) {
         .speak(Priority::Important, text.as_ref())
         .unwrap();
 }
-
-async fn find_a11y_element(role: AtspiRole, reverse: bool) {
-    let focused = STATE
-        .get()
-        .unwrap()
-        .focus
-        .lock()
-        .expect("Cannot lock the STATE.focus mutes");
-    if focused.is_some() {
-        if let Some(prev_header) = focused
-            .as_ref()
-            .expect("This will never happen.")
-            .find_role(role, reverse)
-            .await
-            .unwrap()
-        {
-            prev_header.focus().await.unwrap();
-        }
-    } else {
-        speak("Not found").await;
-    }
-}
-
-#[inline(always)]
-async fn nothing() {
-    assert!(true);
-}
-
-async fn run_event_func(sret: &ScreenReaderEventType) {
-    let map = EV_MAP.get().expect("Could not get EV_MAP");
-    let func = map
-        .get(sret)
-        .expect("Cannot find screen reader event type requested.");
-    func().await;
-}
-
 async fn keybind_listener(state: &'static ScreenReaderState<'static>) {
     // this means that a keybinding CANNOT be added later, it must be setup once and used forever.
     let kbdngs: Vec<KeyBinding> = KEY_MAP
@@ -127,7 +79,8 @@ async fn event_listener(state: &'static ScreenReaderState<'static>) {
             &sender, &path
         );
         let acc = Accessible::new(sender, path, Arc::clone(&reg.proxy.connection));
-        if let mut focused_oc = state.focus.lock().expect("Could not lock focus.") {
+#[allow(irrefutable_let_patterns)] 
+       if let mut focused_oc = state.focus.lock().expect("Could not lock focus.") {
             debug!("changing global focused accessible");
             *focused_oc = Some(acc.clone());
         }
@@ -175,7 +128,7 @@ async fn main() -> Result<(), dbus::Error> {
     //I am trying to fix this by making TTS not be lazily initialised
     speak_non_interrupt("welcome to odilia!").await;
     // always consume caps lock
-    let ocap = KeyBinding {
+    let _ocap = KeyBinding {
         key: None,
         mods: Modifiers::ODILIA,
         repeat: 1,
@@ -184,7 +137,7 @@ async fn main() -> Result<(), dbus::Error> {
         notify: false,
     };
     //trap the ctrl key, to always stop speech
-    let stop_speech_key = KeyBinding {
+    let _stop_speech_key = KeyBinding {
         key: None,
         mods: Modifiers::CONTROL,
         repeat: 1,
@@ -193,7 +146,7 @@ async fn main() -> Result<(), dbus::Error> {
         notify: true,
     };
 
-    let find_in_tree_kb = KeyBinding {
+    let _find_in_tree_kb = KeyBinding {
         key: Some(Key::Other('f')),
         mods: Modifiers::ODILIA,
         repeat: 1,

@@ -1,5 +1,5 @@
 use crate::keybinds::keyevent_match_sync;
-use crate::state::{ScreenReaderEventMap, ScreenReaderState};
+use crate::state::{ScreenReaderState};
 
 use odilia_common::input::{Key, KeyBinding, KeyEvent, Modifiers};
 use rdev::{
@@ -10,10 +10,7 @@ use rdev::{
 use tokio::sync::mpsc;
 
 use once_cell::sync::{Lazy, OnceCell};
-use std::{future::Future, sync::Mutex};
-
-pub type AsyncFn =
-    Box<dyn Fn() -> Box<dyn Future<Output = ()> + Unpin + Send + 'static> + Send + Sync + 'static>;
+use std::{sync::Mutex};
 
 // These are to be used only from the input monitoring thread
 thread_local! {
